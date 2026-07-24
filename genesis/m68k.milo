@@ -22,7 +22,7 @@ let SR_V: i64 = 0x0002
 let SR_Z: i64 = 0x0004
 let SR_N: i64 = 0x0008
 let SR_X: i64 = 0x0010
-let SR_S: i64 = 0x2000
+pub let SR_S: i64 = 0x2000
 let SR_T: i64 = 0x8000
 
 // 24-bit external address space (A1..A23; A0 is internal to the word bus).
@@ -40,7 +40,7 @@ let VRAM_MASK: i64 = 0xFFFF
 // In `genesis` mode the device regions ($A0xxxx I/O, $C0xxxx VDP) dispatch to
 // register/VDP handlers instead of the flat array; ROM ($000000+) and work RAM
 // ($FF0000+) live in the flat array directly (both fit in the 24-bit space).
-struct Mem {
+pub struct Mem {
     ram: Vec<u8>
     touched: Vec<i64>
     genesis: bool
@@ -80,7 +80,7 @@ struct Mem {
     ioRegs: [i64; 16]
 }
 
-fn newMem(): Mem {
+pub fn newMem(): Mem {
     var ram: Vec<u8> = Vec.new()
     var i: i64 = 0
     while i < 0x1000000 {
@@ -105,7 +105,7 @@ fn newMem(): Mem {
 // cores aren't cycle-synced, so freezing the Z80 during a 68k bus-request while
 // the 68k spins waiting for a Z80-cleared flag deadlocks. Letting the Z80 keep
 // executing (it shares z80.mem with the 68k window) lets the handshake complete.
-fn z80Running(m: &Mem): bool {
+pub fn z80Running(m: &Mem): bool {
     // The Z80 executes only when it is out of reset AND the 68k does not hold its
     // bus (BUSREQ). While the 68k has the bus — e.g. writing a sound command into
     // Z80 RAM — the Z80 must be paused; running it then lets the sound driver read
@@ -507,7 +507,7 @@ fn memWrite32(m: &mut Mem, addr: i64, val: i64) {
     memWrite16(m, addr + 2, val & 0xFFFF)
 }
 
-struct M68k {
+pub struct M68k {
     d: [i64; 8] // data registers D0-D7 (32-bit each)
     a: [i64; 8] // address registers A0-A7; a[7] is the ACTIVE stack pointer
     otherSp: i64 // the inactive stack pointer (USP when supervisor, else SSP)
@@ -528,7 +528,7 @@ struct M68k {
     faultCommit: bool
 }
 
-fn newCpu(): M68k {
+pub fn newCpu(): M68k {
     return M68k {
         d: [0, 0, 0, 0, 0, 0, 0, 0],
         a: [0, 0, 0, 0, 0, 0, 0, 0],
@@ -989,7 +989,7 @@ fn setSr(cpu: &mut M68k, newSr: i64) {
 // by SR bits 8-10 (level 7 is non-maskable). Pushes the [SR, PC] frame, raises the
 // SR mask to `level`, enters supervisor, wakes from STOP, and vectors via
 // autovector 24+level. Returns true if taken.
-fn deliverInterrupt(cpu: &mut M68k, m: &mut Mem, level: i64): bool {
+pub fn deliverInterrupt(cpu: &mut M68k, m: &mut Mem, level: i64): bool {
     let curMask = (cpu.sr >> 8) & 0x7
     if level != 7 && level <= curMask {
         return false
@@ -1043,7 +1043,7 @@ fn setPc(cpu: &mut M68k, target: i64) {
 
 // Execute exactly one instruction. Returns false if the CPU cannot proceed
 // (halted / opcode not yet implemented) so the harness can report it.
-fn step(cpu: &mut M68k, m: &mut Mem): bool {
+pub fn step(cpu: &mut M68k, m: &mut Mem): bool {
     if cpu.halted {
         return false
     }

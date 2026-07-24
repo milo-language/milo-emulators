@@ -63,15 +63,15 @@ var badOp: i64 = -1
 var badOpPc: i64 = 0
 
 // Harness accessors for the unimplemented-opcode trap (badOp = -1 when none seen).
-fn lastBadOp(): i64 {
+pub fn lastBadOp(): i64 {
     return badOp
 }
 
-fn lastBadOpPc(): i64 {
+pub fn lastBadOpPc(): i64 {
     return badOpPc
 }
 
-struct Cpu {
+pub struct Cpu {
     a: i64 // 16-bit accumulator (low byte = A, high byte = B when M=1)
     x: i64 // 16-bit index
     y: i64 // 16-bit index
@@ -89,7 +89,7 @@ struct Cpu {
 //  - real bus: 128 KiB WRAM ($7E-$7F + low mirror), LoROM/HiROM cartridge, and
 //    an MMIO scratch store ($2000-$5FFF) stubbed for readback until the PPU/DMA
 //    modules land.
-struct Mem {
+pub struct Mem {
     addr: Vec<i64> // test-mode sparse RAM
     val: Vec<i64>
     testMode: bool
@@ -133,7 +133,7 @@ fn newApuSpc(): Spc {
     }
 }
 
-fn memNew(): Mem {
+pub fn memNew(): Mem {
     return Mem {
         addr: Vec.new(), val: Vec.new(), testMode: true,
         wram: Vec.new(), rom: Vec.new(), romMask: 0, sram: Vec.new(), sramMask: 0, mapMode: 0, mmio: Vec.new(),
@@ -143,7 +143,7 @@ fn memNew(): Mem {
     }
 }
 
-fn vecZeros(n: i64): Vec<u8> {
+pub fn vecZeros(n: i64): Vec<u8> {
     var v: Vec<u8> = Vec.new()
     var i: i64 = 0
     while i < n {
@@ -154,7 +154,7 @@ fn vecZeros(n: i64): Vec<u8> {
 }
 
 // Real-hardware bus over a loaded cartridge. mapMode: 0 LoROM, 1 HiROM.
-fn busNew(rom: Vec<u8>, mapMode: i64): Mem {
+pub fn busNew(rom: Vec<u8>, mapMode: i64): Mem {
     let len = rom.len
     var mask: i64 = 1
     while mask < len {
@@ -208,7 +208,7 @@ fn busNew(rom: Vec<u8>, mapMode: i64): Mem {
 }
 
 // Co-run the SPC700 for n instructions (called from the system step loop).
-fn runApu(m: &mut Mem, n: i64): void {
+pub fn runApu(m: &mut Mem, n: i64): void {
     if m.testMode {
         return
     }
@@ -220,7 +220,7 @@ fn runApu(m: &mut Mem, n: i64): void {
 }
 
 // Peek loaded video memory (tests / future renderer).
-fn busReadCgram(m: &Mem, a: i64): i64 {
+pub fn busReadCgram(m: &Mem, a: i64): i64 {
     return ppuCgram(m.ppu, a)
 }
 
@@ -228,7 +228,7 @@ fn busReadVram(m: &Mem, a: i64): i64 {
     return ppuVram(m.ppu, a)
 }
 
-fn scratch(m: &Mem, addr: i64): i64 {
+pub fn scratch(m: &Mem, addr: i64): i64 {
     return m.mmio[addr - 0x2000] as i64
 }
 
@@ -687,7 +687,7 @@ fn mmioWrite(m: &mut Mem, off: i64, val: i64): void {
 }
 
 // Clear all entries between test cases (reused across a whole file).
-fn memReset(m: &mut Mem): void {
+pub fn memReset(m: &mut Mem): void {
     m.addr = Vec.new()
     m.val = Vec.new()
 }
@@ -727,7 +727,7 @@ fn sramIndex(m: &Mem, bank: i64, off: i64): i64 {
 }
 
 // Serialize SRAM to a byte string for a .srm file.
-fn sramToString(m: &Mem): string {
+pub fn sramToString(m: &Mem): string {
     var s = String.withCapacity(m.sram.len + 16)
     for b in m.sram {
         s.push(b)
@@ -736,7 +736,7 @@ fn sramToString(m: &Mem): string {
 }
 
 // Load a .srm byte string back into SRAM (truncated/padded to SRAM size).
-fn sramFromString(m: &mut Mem, data: &string): void {
+pub fn sramFromString(m: &mut Mem, data: &string): void {
     var i: i64 = 0
     while i < m.sram.len && i < data.len {
         m.sram[i] = data[i]
@@ -744,7 +744,7 @@ fn sramFromString(m: &mut Mem, data: &string): void {
     }
 }
 
-fn memRead(m: &Mem, a: i64): i64 {
+pub fn memRead(m: &Mem, a: i64): i64 {
     if m.testMode {
         var i: i64 = 0
         while i < m.addr.len {
@@ -810,7 +810,7 @@ fn memRead(m: &Mem, a: i64): i64 {
     return romByte(m, bank, off) // banks 40-7D / C0-FF: ROM
 }
 
-fn memWrite(m: &mut Mem, a: i64, v: i64): void {
+pub fn memWrite(m: &mut Mem, a: i64, v: i64): void {
     if m.testMode {
         var i: i64 = 0
         while i < m.addr.len {
@@ -878,7 +878,7 @@ fn memWrite(m: &mut Mem, a: i64, v: i64): void {
 
 // Power-on / reset: enter emulation mode, stack at $01FF, PC from the reset
 // vector at $00:FFFC. P = M|X|I (emulation forces the 8-bit widths).
-fn newCpuReset(m: &Mem): Cpu {
+pub fn newCpuReset(m: &Mem): Cpu {
     let lo = memRead(m, 0xFFFC)
     let hi = memRead(m, 0xFFFD)
     return Cpu {
@@ -974,7 +974,7 @@ fn runFxAndIrq(cpu: &mut Cpu, m: &mut Mem): void {
     }
 }
 
-fn stepFrame(cpu: &mut Cpu, m: &mut Mem): void {
+pub fn stepFrame(cpu: &mut Cpu, m: &mut Mem): void {
     fxFrameBudget = 700000 // ≈ Snes9x per-frame GSU throughput at 21.4MHz
     // CPU and SPC must be finely interleaved: the boot handshake (and later
     // in-game audio commands) round-trips through $2140-$2143 many times, and a
@@ -1879,7 +1879,7 @@ fn blockMove(cpu: &mut Cpu, m: &mut Mem, dir: i64): void {
 // Execute one instruction. Register/flag/transfer/immediate + stack push/pull
 // batches are wired; other memory-operand opcodes fall through to the no-op
 // default and register as failures against Harte until implemented.
-fn step(cpu: &mut Cpu, m: &mut Mem): void {
+pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
     m.hcounter = m.hcounter + 1 // drives the $4212 HBLANK-flag stub
     let op = fetch8(cpu, m)
     match op {

@@ -97,7 +97,7 @@ fn fxRamNonzero(fx: &Fx): i64 {
     return count
 }
 
-fn cloneBytes(src: &Vec<u8>): Vec<u8> {
+pub fn cloneBytes(src: &Vec<u8>): Vec<u8> {
     var v: Vec<u8> = Vec.new()
     var i: i64 = 0
     while i < src.len {
@@ -120,7 +120,7 @@ fn vecZerosFx(n: i64): Vec<u8> {
 // Construct a GSU over a clone of the cart ROM. nRamBanks=2 → 128KB game-pak RAM
 // (Star Fox uses one bank; Yoshi's Island two). Pipe primed with a NOP (0x01) as on
 // real hardware, so the first executed step restores the fetch-pipeline invariant.
-fn fxNew(romClone: Vec<u8>): Fx {
+pub fn fxNew(romClone: Vec<u8>): Fx {
     let len = romClone.len
     var mask: i64 = 1
     while mask < len {
@@ -1090,7 +1090,7 @@ fn fxStepOne(fx: &mut Fx): void {
 
 // Run up to maxSteps GSU instructions (stops early on STOP). Called in bursts from
 // the system frame loop while the GO flag is set.
-fn fxRun(fx: &mut Fx, maxSteps: i64): i64 {
+pub fn fxRun(fx: &mut Fx, maxSteps: i64): i64 {
     if !fx.running {
         return 0
     }
@@ -1150,7 +1150,7 @@ fn fxStart(fx: &mut Fx): void {
 // Pure register read (the CPU read path is over &Mem). Reading $3031 clears the IRQ
 // line on hardware; that side effect is applied by the caller (see fxIrqAck usage in
 // cpu.milo) since this path can't take &mut.
-fn fxRegRead(fx: &Fx, addr: i64): i64 {
+pub fn fxRegRead(fx: &Fx, addr: i64): i64 {
     if addr >= 0x3000 && addr <= 0x301F {
         let i = (addr - 0x3000) >> 1
         let byte = addr & 1
@@ -1201,7 +1201,7 @@ fn fxRegRead(fx: &Fx, addr: i64): i64 {
     return 0
 }
 
-fn fxRegWrite(fx: &mut Fx, addr: i64, v: i64): void {
+pub fn fxRegWrite(fx: &mut Fx, addr: i64, v: i64): void {
     let val = v & 0xFF
     if addr >= 0x3000 && addr <= 0x301F {
         let i = (addr - 0x3000) >> 1
@@ -1297,7 +1297,7 @@ fn fxRegWrite(fx: &mut Fx, addr: i64, v: i64): void {
 // Build a GSU whose ROM is the given program (padded to 32KB, mirrored high half so
 // R14/branch reads past $8000 alias the same bytes, matching the oracle), seed the
 // registers + carry, run `steps`, and return R0-R15 (low 16) plus a composed SFR.
-fn fxTestRun(program: &Vec<u8>, seed: &Vec<i64>, carry: i64, steps: i64): Vec<i64> {
+pub fn fxTestRun(program: &Vec<u8>, seed: &Vec<i64>, carry: i64, steps: i64): Vec<i64> {
     var rom: Vec<u8> = Vec.new()
     var i: i64 = 0
     while i < 0x8000 {
@@ -1339,7 +1339,7 @@ fn fxTestRun(program: &Vec<u8>, seed: &Vec<i64>, carry: i64, steps: i64): Vec<i6
 
 // Detect a Super FX cartridge from the LoROM internal header. Cart-type byte at
 // $7FD6 in {0x13,0x14,0x15,0x1A} → Super FX. (Header already copier-stripped.)
-fn isSuperFx(rom: &Vec<u8>): bool {
+pub fn isSuperFx(rom: &Vec<u8>): bool {
     if rom.len < 0x8000 {
         return false
     }

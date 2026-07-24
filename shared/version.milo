@@ -15,7 +15,7 @@ fn versionLine(name: string): string {
 
 // Checked before argparse runs: every core takes a required ROM positional, so
 // `nes --version` would otherwise fail on the missing argument instead.
-fn handledVersionFlag(name: string): bool {
+pub fn handledVersionFlag(name: string): bool {
     let argv = args()
     var i: i64 = 1
     while i < argv.len {

@@ -14,7 +14,7 @@
 // the JS backend (emit-js) for the browser target. The fs-based loader lives in
 // cartridgeFile.milo. See parseCartridge below for the byte-slice entry point.
 
-struct Cartridge {
+pub struct Cartridge {
     prg: Vec<u8> // program ROM (CPU $8000-$FFFF space)
     chr: Vec<u8> // pattern-table ROM (PPU $0000-$1FFF)
     mapper: u8
@@ -42,7 +42,7 @@ fn sliceBytes(src: &Vec<u8>, off: i64, len: i64): Vec<u8> {
 
 // Parse an iNES image from raw bytes. FFI-free so both the fs loader
 // (cartridgeFile.milo) and the browser driver can share it.
-fn parseCartridge(raw: &Vec<u8>): Result<Cartridge, string> {
+pub fn parseCartridge(raw: &Vec<u8>): Result<Cartridge, string> {
     if raw.len < HEADER {
         return Result.Err("file too small for iNES header")
     }

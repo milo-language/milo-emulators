@@ -55,7 +55,7 @@ struct Ppu {
     fb: [u32; 61440] // 256x240 ARGB/ABGR framebuffer (R,G,B,A byte order)
 }
 
-fn newPpu(chr: Vec<u8>, mirrorVertical: bool): Ppu {
+pub fn newPpu(chr: Vec<u8>, mirrorVertical: bool): Ppu {
     // CHR-RAM carts report 0 CHR banks; give them 8 KiB of zeroed RAM.
     var c = chr
     if c.len == 0 {
@@ -105,13 +105,13 @@ fn mmc2UpdateChr(ppu: &mut Ppu): void {
     }
 }
 
-fn mmc2InitMapper(ppu: &mut Ppu): void {
+pub fn mmc2InitMapper(ppu: &mut Ppu): void {
     ppu.mmc2 = true
     mmc2UpdateChr(ppu)
 }
 
 // CPU-side CHR bank register write: which = 0:FD0 1:FE0 2:FD1 3:FE1.
-fn mmc2SetChr(ppu: &mut Ppu, which: i64, bank: i64): void {
+pub fn mmc2SetChr(ppu: &mut Ppu, which: i64, bank: i64): void {
     if which == 0 {
         ppu.mmc2ChrFD0 = bank
     } else if which == 1 {
@@ -261,7 +261,7 @@ fn ppuMemWrite(ppu: &mut Ppu, addr: u16, val: u8): void {
 }
 
 // --- CPU-facing register interface ($2000-$2007, mirrored every 8) ---
-fn ppuRegRead(ppu: &mut Ppu, reg: i64): u8 {
+pub fn ppuRegRead(ppu: &mut Ppu, reg: i64): u8 {
     if reg == 2 {
         // PPUSTATUS: top 3 bits + stale buffer; reading clears vblank and w latch
         let r = (ppu.status & 0xE0) | (ppu.readBuffer & 0x1F)
@@ -291,7 +291,7 @@ fn ppuRegRead(ppu: &mut Ppu, reg: i64): u8 {
     return 0
 }
 
-fn ppuRegWrite(ppu: &mut Ppu, reg: i64, val: u8): void {
+pub fn ppuRegWrite(ppu: &mut Ppu, reg: i64, val: u8): void {
     if reg == 0 {
         ppu.ctrl = val
         // t: nametable select bits 10-11
@@ -372,7 +372,7 @@ fn incrementY(ppu: &mut Ppu): void {
 // Advance one PPU dot. Renders the just-fetched visible scanline near the end of
 // its fetch window using the *live* scroll (X from t, Y from v) and CHR banks, so
 // mid-frame IRQ splits (scroll changes + CHR bank swaps) land on the right rows.
-fn ppuStep(ppu: &mut Ppu): void {
+pub fn ppuStep(ppu: &mut Ppu): void {
     ppu.dot = ppu.dot + 1
     if ppu.dot > 340 {
         ppu.dot = 0
@@ -595,5 +595,5 @@ fn renderSpriteLine(ppu: &mut Ppu, sl: i64, bgOpaque: [u8; 256]): void {
 
 // Background + sprites now render per-scanline inside ppuStep; the frame is
 // already in fb by vblank, so this is a no-op kept for the frontend call site.
-fn renderFrame(_ppu: &mut Ppu): void {
+pub fn renderFrame(_ppu: &mut Ppu): void {
 }

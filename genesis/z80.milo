@@ -17,7 +17,7 @@ let FY: i64 = 0x20
 let FZ: i64 = 0x40
 let FS: i64 = 0x80
 
-struct Z80 {
+pub struct Z80 {
     a: i64
     b: i64
     c: i64
@@ -69,7 +69,7 @@ struct Z80 {
     timerBRun: bool
 }
 
-fn newZ80(): Z80 {
+pub fn newZ80(): Z80 {
     var mem: Vec<u8> = Vec.new()
     var i: i64 = 0
     while i < 0x10000 {
@@ -148,7 +148,7 @@ fn wr(cpu: &mut Z80, addr: i64, val: i64) {
 
 // Z80-side Genesis memory map: 8 KB RAM ($0000-$1FFF, mirrored to $3FFF),
 // YM2612 ($4000-$4003), bank register ($6000), PSG ($7F11).
-fn z80DevWrite(cpu: &mut Z80, a: i64, val: i64) {
+pub fn z80DevWrite(cpu: &mut Z80, a: i64, val: i64) {
     if a < 0x4000 {
         cpu.mem[a & 0x1FFF] = val as u8
         return
@@ -513,7 +513,7 @@ fn setRP2(cpu: &mut Z80, p: i64, v: i64) {
 // Deliver the Z80 maskable interrupt (its INT line is tied to the VDP VBlank on
 // the Genesis). Fires once per frame if interrupts are enabled. IM 1 (the usual
 // mode) vectors to $0038; IM 2 uses the I-register vector table.
-fn z80Interrupt(cpu: &mut Z80): bool {
+pub fn z80Interrupt(cpu: &mut Z80): bool {
     if !cpu.iff1 {
         return false
     }
@@ -662,7 +662,7 @@ fn doDaa(cpu: &mut Z80) {
 }
 
 // Execute one instruction. Returns false on an opcode not yet implemented.
-fn stepZ80(cpu: &mut Z80): bool {
+pub fn stepZ80(cpu: &mut Z80): bool {
     ymTimerTick(cpu, 1) // ~1 emulated-us per step (see struct note); paces sound drivers
     // While halted the Z80 idles on the HALT instruction, executing nothing until
     // an interrupt clears the flag (z80Interrupt). Without this it fetched and ran

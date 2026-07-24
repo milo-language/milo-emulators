@@ -152,7 +152,7 @@ fn newNoise(): Noise {
     }
 }
 
-fn newApu(): Apu {
+pub fn newApu(): Apu {
     // Precompute the two nonlinear mixer lookup tables (nesdev formulas).
     var pt: [f64; 31] = [0.0; 31]
     var i: i64 = 1
@@ -177,7 +177,7 @@ fn newApu(): Apu {
 }
 
 // ---- register writes ($4000-$4017, reg = addr - 0x4000) ----
-fn apuWrite(apu: &mut Apu, reg: i64, val: u8): void {
+pub fn apuWrite(apu: &mut Apu, reg: i64, val: u8): void {
     let v = val as i64
     if reg <= 0x03 {
         writePulse(apu.pulse1, reg, v)
@@ -316,7 +316,7 @@ fn writeFrameCounter(apu: &mut Apu, v: i64): void {
 }
 
 // $4015 read: channel-active + frame-IRQ status; reading clears the frame IRQ.
-fn apuReadStatus(apu: &mut Apu): u8 {
+pub fn apuReadStatus(apu: &mut Apu): u8 {
     var r: i64 = 0
     if apu.pulse1.length > 0 {
         r = r | 0x01
@@ -344,7 +344,7 @@ fn apuReadStatus(apu: &mut Apu): u8 {
 }
 
 // ---- clocking ----
-fn apuStep(apu: &mut Apu, cycles: i64): void {
+pub fn apuStep(apu: &mut Apu, cycles: i64): void {
     var c: i64 = 0
     while c < cycles {
         clockTriangleTimer(apu.triangle) // triangle timer runs at the CPU rate
@@ -472,7 +472,7 @@ fn clockDmc(d: &mut Dmc): void {
 }
 
 // Supply a byte fetched from CPU memory (called by the bus after a needsFetch).
-fn dmcFill(d: &mut Dmc, byte: i64): void {
+pub fn dmcFill(d: &mut Dmc, byte: i64): void {
     d.bufferByte = byte
     d.bufferEmpty = false
     d.needsFetch = false

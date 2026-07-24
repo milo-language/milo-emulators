@@ -293,7 +293,7 @@ fn drawChihuahua(fb: &mut [u32; 61440], ox: i64, oy: i64, scale: i64): void {
 }
 
 // Render the full splash into fb.
-fn renderSplash(fb: &mut [u32; 61440]): void {
+pub fn renderSplash(fb: &mut [u32; 61440]): void {
     let bg = rgb(20, 18, 40)
     let gold = rgb(248, 206, 92)
     let cream = rgb(238, 232, 210)

@@ -23,7 +23,7 @@ let FV: u8 = 0x40 // overflow
 let FN: u8 = 0x80 // negative
 
 // CPU-visible address space. Owns PRG-ROM and the PPU (which owns CHR/VRAM).
-struct Bus {
+pub struct Bus {
     ram: [u8; 2048] // $0000-$07FF, mirrored through $1FFF
     wram: [u8; 8192] // $6000-$7FFF cartridge PRG-RAM (MMC3 scratch, etc.)
     prg: Vec<u8> // mapper-0 PRG, 16K or 32K
@@ -60,7 +60,7 @@ struct Bus {
     nmiArmed: bool // NMI edge detected last instruction, serviced this one (1-instr latency)
 }
 
-fn newBus(cart: Cartridge): Bus {
+pub fn newBus(cart: Cartridge): Bus {
     let n = cart.prg.len
     // 16K carts mirror $C000-$FFFF onto $8000-$BFFF via a 0x3FFF mask.
     let mask: i64 = if n == 16384 {
@@ -337,7 +337,7 @@ fn mmc3Write(bus: &mut Bus, a: i64, val: u8): void {
     }
 }
 
-struct Cpu {
+pub struct Cpu {
     a: u8 // accumulator — the only register ALU results land in
     x: u8 // index register; also the only one that can index the stack (TXS/TSX)
     y: u8 // index register; no stack access, but the only one for (zp),Y
@@ -350,14 +350,14 @@ struct Cpu {
 }
 
 // nestest's automated entry: PC=$C000, SP=$FD, P=$24 (I+U), 7 cycles already burned.
-fn newCpuNestest(): Cpu {
+pub fn newCpuNestest(): Cpu {
     return Cpu {
         a: 0, x: 0, y: 0, sp: 0xFD, p: 0x24, pc: 0xC000, cyc: 7, extraCycles: 0, unknownSeen: [false; 256]
     }
 }
 
 // Power-on / reset: PC from the reset vector at $FFFC/$FFFD.
-fn newCpuReset(bus: &mut Bus): Cpu {
+pub fn newCpuReset(bus: &mut Bus): Cpu {
     let lo = busRead(bus, 0xFFFC) as i64
     let hi = busRead(bus, 0xFFFD) as i64
     return Cpu {
@@ -396,7 +396,7 @@ fn irq(cpu: &mut Cpu, bus: &mut Bus): void {
 // handler's own $2002 read clears it. Dispatching NMI immediately preempted that
 // poll, so vblank-wait loops with NMI enabled spun forever — the 1200-in-1
 // BOMBERMAN title->play handoff (loop at $C288) is the canonical repro.
-fn serviceInterrupts(cpu: &mut Cpu, bus: &mut Bus): void {
+pub fn serviceInterrupts(cpu: &mut Cpu, bus: &mut Bus): void {
     if bus.nmiArmed {
         bus.nmiArmed = false
         nmi(cpu, bus)
@@ -518,7 +518,7 @@ fn mmc3ClockIrq(bus: &mut Bus): void {
 // of each visible line while rendering is enabled.
 // Advance the APU by `cycles` CPU cycles, then service any DMC sample-fetch it
 // requested (the DMC reads CPU memory, which only the bus can do).
-fn clockApu(bus: &mut Bus, cycles: i64): void {
+pub fn clockApu(bus: &mut Bus, cycles: i64): void {
     apuStep(bus.apu, cycles)
     if bus.apu.dmc.needsFetch {
         let addr = bus.apu.dmc.curAddr
@@ -527,7 +527,7 @@ fn clockApu(bus: &mut Bus, cycles: i64): void {
     }
 }
 
-fn clockPpu(bus: &mut Bus): void {
+pub fn clockPpu(bus: &mut Bus): void {
     ppuStep(bus.ppu)
     if bus.mapper == 4 && bus.ppu.dot == 260 && bus.ppu.scanline < 240 && (bus.ppu.mask & 0x18) != 0 {
         mmc3ClockIrq(bus)
@@ -782,7 +782,7 @@ fn hex2(v: i64): string {
     return s
 }
 
-fn hex4(v: i64): string {
+pub fn hex4(v: i64): string {
     var s = hex2((v >> 8) & 0xFF)
     let lo = hex2(v & 0xFF)
     appendStr(s, lo)
@@ -809,7 +809,7 @@ fn decStr(n: i64): string {
 }
 
 // nestest.log comparison columns: "PC A:.. X:.. Y:.. P:.. SP:.. CYC:.."
-fn formatState(cpu: &Cpu): string {
+pub fn formatState(cpu: &Cpu): string {
     var s = hex4(cpu.pc as i64)
     let a = hex2(cpu.a as i64)
     appendStr(s, " A:")
@@ -973,7 +973,7 @@ fn jam(cpu: &mut Cpu): void {
 }
 
 // Execute one instruction, advancing cyc by its total cost.
-fn step(cpu: &mut Cpu, bus: &mut Bus): void {
+pub fn step(cpu: &mut Cpu, bus: &mut Bus): void {
     cpu.extraCycles = 0
     let op = fetch8(cpu, bus)
     match op {

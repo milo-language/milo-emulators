@@ -7,14 +7,14 @@ from "./m68k" import {
     Mem
 }
 
-fn frameWidth(m: &Mem): i64 {
+pub fn frameWidth(m: &Mem): i64 {
     if (m.vdpRegs[12] & 0x1) != 0 {
         return 320
     }
     return 256
 }
 
-fn frameHeight(_m: &Mem): i64 {
+pub fn frameHeight(_m: &Mem): i64 {
     return 224
 }
 
@@ -71,15 +71,15 @@ ensures result >= 0 && result <= 255
 
 // Decode a packed framebuffer pixel (index in bits 0-5, brightness mode in bits
 // 6-7) into 8-bit R/G/B via CRAM.
-fn pixelR(m: &Mem, packed: i64): i64 {
+pub fn pixelR(m: &Mem, packed: i64): i64 {
     return shComp(cramR(m.cram[packed & 0x3F]), (packed >> 6) & 0x3)
 }
 
-fn pixelG(m: &Mem, packed: i64): i64 {
+pub fn pixelG(m: &Mem, packed: i64): i64 {
     return shComp(cramG(m.cram[packed & 0x3F]), (packed >> 6) & 0x3)
 }
 
-fn pixelB(m: &Mem, packed: i64): i64 {
+pub fn pixelB(m: &Mem, packed: i64): i64 {
     return shComp(cramB(m.cram[packed & 0x3F]), (packed >> 6) & 0x3)
 }
 
@@ -217,7 +217,7 @@ fn sampleWindow(m: &Mem, x: i64, y: i64, width: i64): i64 {
 }
 
 // Build the full frame as a Vec<i64> of CRAM indices: planes B then A, sprites on top.
-fn renderIndexed(m: &Mem): Vec<i64> {
+pub fn renderIndexed(m: &Mem): Vec<i64> {
     let width = frameWidth(m)
     let height = frameHeight(m)
     let planeW = planeCells(m.vdpRegs[16] & 0x3)

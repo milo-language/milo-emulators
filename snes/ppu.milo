@@ -3,7 +3,7 @@
 // BG/OBJ control) that DMA and CPU writes push graphics data through. Actual
 // scanline rendering (Mode 1 backgrounds + sprites) lands next. Ref: fullsnes.
 
-struct Ppu {
+pub struct Ppu {
     vram: Vec<u8> // 64 KiB (32K 16-bit words)
     cgram: Vec<u8> // 512 bytes = 256 BGR555 colors
     oam: Vec<u8> // real OAM is 544B (512 + 32 high); over-allocated to 0x400 so the
@@ -110,7 +110,7 @@ fn ppuZerosI64(n: i64): Vec<i64> {
     return v
 }
 
-fn newPpu(): Ppu {
+pub fn newPpu(): Ppu {
     return Ppu {
         vram: ppuZeros(0x10000), cgram: ppuZeros(0x200), oam: ppuZeros(0x400),
         inidisp: 0, obsel: 0, oamaddr: 0, oamLatch: 0, oamHi: false,
@@ -150,7 +150,7 @@ var oamReload: i64 = 0
 
 // Reload OAMADDR at vblank start (called from stepFrame). No-op under force-blank,
 // matching hardware (OAM address isn't reloaded while the screen is forced blank).
-fn ppuVblankOamReload(p: &mut Ppu): void {
+pub fn ppuVblankOamReload(p: &mut Ppu): void {
     if (p.inidisp & 0x80) == 0 {
         p.oamaddr = oamReload
         p.oamHi = false
@@ -158,7 +158,7 @@ fn ppuVblankOamReload(p: &mut Ppu): void {
 }
 
 // Register write for $2100-$213F (reg = low byte of the address).
-fn ppuRegWrite(p: &mut Ppu, reg: i64, val: i64): void {
+pub fn ppuRegWrite(p: &mut Ppu, reg: i64, val: i64): void {
     let v = val & 0xFF
     if reg == 0x00 {
         p.inidisp = v
@@ -416,7 +416,7 @@ fn ppuRegRead(p: &mut Ppu, reg: i64): i64 {
 }
 
 // Pure register read (no auto-increment) for the CPU's &Mem read path.
-fn ppuRegReadPure(p: &Ppu, reg: i64): i64 {
+pub fn ppuRegReadPure(p: &Ppu, reg: i64): i64 {
     if reg == 0x38 {
         return p.oam[(p.oamaddr * 2) & 0x3FF] as i64
     }
@@ -1039,7 +1039,7 @@ fn renderMode1Main(p: &Ppu, fb: &mut Vec<i64>, bright: i64): void {
 // base and the main-screen ($212C TM) layers on top — an approximation of color
 // math (no per-pixel add/half blending on layers yet, but the backdrop gets it
 // via backdropColor). Surfaces sub-screen backgrounds (SMW overworld map) too.
-fn renderFrame(p: &Ppu, fb: &mut Vec<i64>): void {
+pub fn renderFrame(p: &Ppu, fb: &mut Vec<i64>): void {
     let bright = p.inidisp & 0x0F
     // Scalar force-blank only blanks the whole frame when HDMA isn't rewriting
     // INIDISP mid-frame: Star Fox letterboxes by holding $2100=$80 in the register
@@ -1090,10 +1090,10 @@ fn renderFrame(p: &Ppu, fb: &mut Vec<i64>): void {
 }
 
 // Direct byte accessors (used by DMA / tests to peek loaded graphics memory).
-fn ppuVram(p: &Ppu, a: i64): i64 {
+pub fn ppuVram(p: &Ppu, a: i64): i64 {
     return p.vram[a & 0xFFFF] as i64
 }
 
-fn ppuCgram(p: &Ppu, a: i64): i64 {
+pub fn ppuCgram(p: &Ppu, a: i64): i64 {
     return p.cgram[a & 0x1FF] as i64
 }

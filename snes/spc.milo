@@ -15,7 +15,7 @@ let PP: i64 = 0x20 // direct-page selector (0 = $00xx, 1 = $01xx)
 let PV: i64 = 0x40 // overflow
 let PN: i64 = 0x80 // negative
 
-struct Spc {
+pub struct Spc {
     a: i64
     x: i64
     y: i64
@@ -28,7 +28,7 @@ struct Spc {
 // RAM + the 64-byte IPL boot ROM at $FFC0-$FFFF (when enabled) + the four
 // CPU<->APU port latches at $F4-$F7. inPort = what the main CPU wrote (SPC
 // reads it); outPort = what the SPC wrote (main CPU reads it at $2140-$2143).
-struct SpcMem {
+pub struct SpcMem {
     addr: Vec<i64> // test-mode sparse RAM
     val: Vec<i64>
     testMode: bool
@@ -64,7 +64,7 @@ struct SpcMem {
     vKonPrev: i64 // last KON ($4C) value, to detect key-on edges
 }
 
-fn spcMemNew(): SpcMem {
+pub fn spcMemNew(): SpcMem {
     return SpcMem {
         addr: Vec.new(), val: Vec.new(), testMode: true,
         ram: Vec.new(), ipl: Vec.new(), iplEnabled: false,
@@ -111,7 +111,7 @@ fn spcZerosI64(n: i64): Vec<i64> {
     return v
 }
 
-fn spcMemReal(): SpcMem {
+pub fn spcMemReal(): SpcMem {
     return SpcMem {
         addr: Vec.new(), val: Vec.new(), testMode: false,
         ram: spcZeros(0x10000), ipl: iplRom(), iplEnabled: true,
@@ -218,7 +218,7 @@ fn dspKeyOn(m: &mut SpcMem, v: i64): void {
 }
 
 // Generate `n` stereo samples (interleaved L,R) into `out` (cleared+filled).
-fn dspGenerate(m: &mut SpcMem, out: &mut Vec<i64>, n: i64): void {
+pub fn dspGenerate(m: &mut SpcMem, out: &mut Vec<i64>, n: i64): void {
     // Global mute / reset (FLG bit6).
     let muted = (m.dsp[0x6C] as i64 & 0x40) != 0
     let konNow = m.dsp[0x4C] as i64
@@ -298,12 +298,12 @@ fn dspGenerate(m: &mut SpcMem, out: &mut Vec<i64>, n: i64): void {
     }
 }
 
-fn spcMemReset(m: &mut SpcMem): void {
+pub fn spcMemReset(m: &mut SpcMem): void {
     m.addr = Vec.new()
     m.val = Vec.new()
 }
 
-fn spcRead(m: &mut SpcMem, a: i64): i64 {
+pub fn spcRead(m: &mut SpcMem, a: i64): i64 {
     if m.testMode {
         var i: i64 = 0
         while i < m.addr.len {
@@ -368,7 +368,7 @@ fn spcTimersTick(m: &mut SpcMem, cyc: i64): void {
     }
 }
 
-fn spcWrite(m: &mut SpcMem, a: i64, v: i64): void {
+pub fn spcWrite(m: &mut SpcMem, a: i64, v: i64): void {
     if m.testMode {
         let addr = a & 0xFFFF
         var i: i64 = 0
@@ -438,16 +438,16 @@ fn spcWrite(m: &mut SpcMem, a: i64, v: i64): void {
 }
 
 // Main-CPU side of the APU ports ($2140-$2143 <-> $F4-$F7).
-fn apuReadPort(m: &SpcMem, i: i64): i64 {
+pub fn apuReadPort(m: &SpcMem, i: i64): i64 {
     return m.outPort[i & 3]
 }
 
-fn apuWritePort(m: &mut SpcMem, i: i64, v: i64): void {
+pub fn apuWritePort(m: &mut SpcMem, i: i64, v: i64): void {
     m.inPort[i & 3] = v & 0xFF
 }
 
 // Reset the SPC into the IPL: PC from the reset vector at $FFFE.
-fn spcReset(spc: &mut Spc, m: &mut SpcMem): void {
+pub fn spcReset(spc: &mut Spc, m: &mut SpcMem): void {
     spc.pc = spcRead16(m, 0xFFFE)
     spc.sp = 0xEF
     spc.psw = 0x02
@@ -774,7 +774,7 @@ fn spcCmpw(spc: &mut Spc, w: i64): void {
 
 // Execute one instruction. Batches: flag ops, MOVs, INC/DEC, and A-form ALU
 // (OR/AND/EOR/CMP/ADC/SBC) over immediate/dp/abs.
-fn spcStep(spc: &mut Spc, m: &mut SpcMem): void {
+pub fn spcStep(spc: &mut Spc, m: &mut SpcMem): void {
     // Advance timers by a nominal per-instruction cycle count. Exact cycle
     // accounting isn't modeled yet; ~16 keeps the 8kHz/64kHz rates in the right
     // ballpark so sound-driver timing loops progress.

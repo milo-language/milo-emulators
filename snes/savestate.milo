@@ -94,7 +94,7 @@ fn getWords(data: &string, r: &mut Rd, dst: &mut Vec<i64>): void {
 // Magic header so a stale/foreign file is rejected rather than corrupting state.
 let SAVE_MAGIC: i64 = 0x314D5353 // "SSM1"
 
-fn saveState(cpu: &Cpu, m: &Mem): string {
+pub fn saveState(cpu: &Cpu, m: &Mem): string {
     var s = String.withCapacity(400000)
     putW(s, SAVE_MAGIC)
     // CPU
@@ -224,7 +224,7 @@ fn saveState(cpu: &Cpu, m: &Mem): string {
 
 // Restore in the exact order saveState wrote. Returns false if the magic is
 // wrong (foreign/corrupt file) so the caller can keep running as-is.
-fn loadState(cpu: &mut Cpu, m: &mut Mem, data: &string): bool {
+pub fn loadState(cpu: &mut Cpu, m: &mut Mem, data: &string): bool {
     if data.len < 4 {
         return false
     }

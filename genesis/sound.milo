@@ -14,7 +14,7 @@ let SAMPLE_RATE: i64 = 44100
 // output frequency = fnum * 2^block * 53267 / 2^20. Precompute the scale ×1e6.
 let FM_SCALE_1E6: i64 = 50808 // (53267 / 2^20) * 1e6, rounded
 
-struct Synth {
+pub struct Synth {
     phase: [i64; 10] // carrier phase per voice (6 FM + 3 PSG + 1 noise), 8.16 fixed
     modPhase: [i64; 6] // FM modulator (op3) phase per channel
     envLevel: [i64; 6] // per-channel amplitude envelope (0..255), smooths note gates
@@ -23,7 +23,7 @@ struct Synth {
     noiseLfsr: i64
 }
 
-fn newSynth(): Synth {
+pub fn newSynth(): Synth {
     return Synth {
         phase: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         modPhase: [0, 0, 0, 0, 0, 0],
@@ -181,7 +181,7 @@ fn panLR(z: &Z80, part: i64, ci: i64): i64 {
 }
 
 // Advance the synth by one sample; returns a signed 16-bit stereo pair.
-fn synthSample(s: &mut Synth, z: &mut Z80): StereoSample {
+pub fn synthSample(s: &mut Synth, z: &mut Z80): StereoSample {
     var accL: i64 = 0
     var accR: i64 = 0
     let dacOn = (z.ym[0x2B] & 0x80) != 0

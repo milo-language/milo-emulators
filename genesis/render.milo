@@ -18,7 +18,11 @@ pub fn frameHeight(_m: &Mem): i64 {
     return 224
 }
 
-fn planeCells(code: i64): i64 {
+// Plane size in cells. Every caller divides or masks with this, so a zero or negative
+// answer would be a divide-by-zero rather than a wrong pixel.
+fn planeCells(code: i64): i64
+ensures result == 32 || result == 64 || result == 128
+{
     if code == 0 {
         return 32
     }

@@ -115,7 +115,11 @@ fn ymTimerTick(cpu: &mut Z80, us: i64) {
     }
 }
 
-fn rd(cpu: &Z80, addr: i64): i64 {
+// Every Z80 memory read yields a byte. The bound is what the fetch helpers pass on to
+// `signExt8`, so it is the root of that chain.
+fn rd(cpu: &Z80, addr: i64): i64
+ensures result >= 0 && result <= 255
+{
     let a = addr & 0xFFFF
     if cpu.gen {
         if a < 0x4000 {
@@ -228,14 +232,18 @@ fn psgWrite(cpu: &mut Z80, val: i64) {
 }
 
 // Opcode/operand fetch. Only opcode fetches bump R; use zfetch8 for operands.
-fn fetchOp(cpu: &mut Z80): i64 {
+fn fetchOp(cpu: &mut Z80): i64
+ensures result >= 0 && result <= 255
+{
     let op = rd(cpu, cpu.pc)
     cpu.pc = (cpu.pc + 1) & 0xFFFF
     cpu.r = (cpu.r & 0x80) | ((cpu.r + 1) & 0x7F)
     return op
 }
 
-fn zfetch8(cpu: &mut Z80): i64 {
+fn zfetch8(cpu: &mut Z80): i64
+ensures result >= 0 && result <= 255
+{
     let v = rd(cpu, cpu.pc)
     cpu.pc = (cpu.pc + 1) & 0xFFFF
     return v
@@ -934,7 +942,14 @@ fn execX3(cpu: &mut Z80, _op: i64, y: i64, z: i64, p: i64, q: i64): bool {
     return true
 }
 
-fn signExt8(v: i64): i64 {
+// Sign-extend a byte for relative jumps. Unlike the SNES equivalents this does NOT mask
+// its input first, so passing anything wider than a byte silently returns a wrong
+// displacement — the precondition is what makes that a checked call rather than a
+// convention. Callers read the operand straight from memory, which is already 0..255.
+fn signExt8(v: i64): i64
+requires v >= 0 && v <= 255
+ensures result >= -128 && result <= 127
+{
     if (v & 0x80) != 0 {
         return v - 256
     }

@@ -189,7 +189,11 @@ fn mmc2ExtraBgFetches(ppu: &mut Ppu, scrollX: i64, scrollY: i64): void {
 }
 
 // --- nametable mirroring: map a $2000-$2FFF address into the 2 KiB VRAM ---
-fn mirrorNT(ppu: &Ppu, addr: i64): i64 {
+// The result indexes `ppu.vram`, a 2 KiB buffer, so the bound is the whole point of the
+// mirroring math rather than an incidental fact about it.
+fn mirrorNT(ppu: &Ppu, addr: i64): i64
+ensures result >= 0 && result < 0x800
+{
     let a = addr & 0x0FFF // offset within nametable region
     let table = a / 0x0400 // which of the 4 logical nametables (0-3)
     let off = a & 0x03FF
@@ -205,7 +209,13 @@ fn mirrorNT(ppu: &Ppu, addr: i64): i64 {
 }
 
 // Map a $0000-$1FFF pattern address through the 1 KiB CHR bank windows.
-fn chrPhys(ppu: &Ppu, a: i64): i64 {
+// The final `% chr.len` is what makes an attacker-supplied bank offset safe, so the bound
+// is stated: every result indexes `chr`. A cart with no CHR at all would divide by zero,
+// which the loader already rejects.
+fn chrPhys(ppu: &Ppu, a: i64): i64
+requires ppu.chr.len > 0
+ensures result >= 0 && result < ppu.chr.len
+{
     return (ppu.chrBankOffset[a / 0x400] + (a & 0x3FF)) % ppu.chr.len
 }
 

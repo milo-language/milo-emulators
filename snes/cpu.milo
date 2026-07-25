@@ -237,7 +237,12 @@ fn setScratch(m: &mut Mem, addr: i64, v: i64): void {
 }
 
 // B-bus register offset within a DMA transfer (fullsnes transfer patterns).
-fn dmaPatternOffset(pattern: i64, count: i64): i64 {
+// Offset added to the B-bus address during a DMA transfer. It selects one of at most four
+// consecutive registers, so anything outside 0..3 would write a register the transfer
+// pattern never names.
+fn dmaPatternOffset(pattern: i64, count: i64): i64
+ensures result >= 0 && result <= 3
+{
     if pattern == 0 {
         return 0
     }

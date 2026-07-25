@@ -1,0 +1,34 @@
+# Static contract gate for the cores. No emulator runs here — `milo prove` discharges the
+# requires/ensures/invariant annotations against the SMT theory at compile time, and the
+# gate fails when a contract becomes refutable or stops being discharged.
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # z3 decides the nonlinear and bit-level obligations the native std/smt prover can
+      # only mark unknown. Without it the gate still runs, just with weaker verdicts.
+      - name: install z3
+        run: sudo apt-get update && sudo apt-get install -y z3
+
+      # Against the released compiler, the same one users have — a prover change that
+      # breaks these cores shows up here rather than silently.
+      - name: install milo
+        run: |
+          curl -fsSL -o milo.tar.gz \
+            https://github.com/milo-language/milo/releases/download/latest/milo-linux-x64.tar.gz
+          tar xzf milo.tar.gz
+          chmod +x milo
+          echo "$PWD" >> "$GITHUB_PATH"
+
+      - name: verify contracts
+        run: ./tools/verify-contracts.sh

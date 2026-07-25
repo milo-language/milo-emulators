@@ -155,7 +155,10 @@ pub fn fxNew(romClone: Vec<u8>): Fx {
 
 // --- sign/zero-extension helpers (i64 backing; explicit so we never depend on the
 // sign of Milo's >> for the arithmetic-shift ops) ---
-fn sex8(v: i64): i64 {
+// Sign-extend a byte. Masks first, so any input is accepted; the result is a signed byte.
+fn sex8(v: i64): i64
+ensures result >= -128 && result <= 127
+{
     let b = v & 0xFF
     if (b & 0x80) != 0 {
         return b - 0x100
@@ -163,7 +166,10 @@ fn sex8(v: i64): i64 {
     return b
 }
 
-fn sex16(v: i64): i64 {
+// Sign-extend a 16-bit word. Masks first, so any input is accepted.
+fn sex16(v: i64): i64
+ensures result >= -32768 && result <= 32767
+{
     let b = v & 0xFFFF
     if (b & 0x8000) != 0 {
         return b - 0x10000
@@ -287,7 +293,11 @@ fn fxUpdateScreen(fx: &mut Fx): void {
     }
 }
 
-fn bytesPerTile(mode: i64): i64 {
+// Callers multiply a tile number by this and divide offsets by it, so a zero would be a
+// divide-by-zero and a negative would index backwards out of the tile buffer.
+fn bytesPerTile(mode: i64): i64
+ensures result == 16 || result == 32 || result == 64
+{
     if mode == 0 {
         return 16 // 2bpp
     }
@@ -297,7 +307,10 @@ fn bytesPerTile(mode: i64): i64 {
     return 32 // 4bpp
 }
 
-fn planeCount(mode: i64): i64 {
+// Number of bitplanes. Loop bounds are derived from it, so it must stay positive.
+fn planeCount(mode: i64): i64
+ensures result == 2 || result == 4 || result == 8
+{
     if mode == 0 {
         return 2
     }

@@ -130,7 +130,10 @@ pub fn spcMemReal(): SpcMem {
 // each voice's pitch, scaled by a (simplified) envelope + per-voice + master
 // volume. Skips gaussian interpolation and echo for now (dry but audible).
 
-fn s8(v: i64): i64 {
+// Sign-extend a byte for relative branches. Masks first, so any input is accepted.
+fn s8(v: i64): i64
+ensures result >= -128 && result <= 127
+{
     let x = v & 0xFF
     if x >= 0x80 {
         return x - 0x100

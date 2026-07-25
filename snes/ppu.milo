@@ -433,7 +433,10 @@ pub fn ppuRegReadPure(p: &Ppu, reg: i64): i64 {
 }
 
 // Sign-extend a 16-bit / 13-bit two's-complement value (Mode 7 fixed-point regs).
-fn m7Ext16(v: i64): i64 {
+// Mode 7 matrix terms are signed 16-bit; the extension must land in that range.
+fn m7Ext16(v: i64): i64
+ensures result >= -32768 && result <= 32767
+{
     let x = v & 0xFFFF
     return if x >= 0x8000 {
         x - 0x10000
@@ -442,7 +445,10 @@ fn m7Ext16(v: i64): i64 {
     }
 }
 
-fn m7Ext13(v: i64): i64 {
+// Mode 7 scroll terms are signed 13-bit.
+fn m7Ext13(v: i64): i64
+ensures result >= -4096 && result <= 4095
+{
     let x = v & 0x1FFF
     return if x >= 0x1000 {
         x - 0x2000
@@ -884,7 +890,10 @@ fn renderScreenBGs(p: &Ppu, fb: &mut Vec<i64>, bright: i64, enable: i64, screenD
 }
 
 // Clamp a 5-bit color component to 0-31.
-fn clamp5(v: i64): i64 {
+// The result indexes a 32-entry table, so the clamp IS the bound.
+fn clamp5(v: i64): i64
+ensures result >= 0 && result <= 31
+{
     if v < 0 {
         return 0
     }
@@ -894,7 +903,10 @@ fn clamp5(v: i64): i64 {
     return v
 }
 
-fn clamp8(v: i64): i64 {
+// 8-bit channel value: the clamp is what keeps a blended component in range.
+fn clamp8(v: i64): i64
+ensures result >= 0 && result <= 255
+{
     if v < 0 {
         return 0
     }

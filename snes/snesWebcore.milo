@@ -1,13 +1,16 @@
 // Browser-target SNES core: the pure emulator (65816 + SPC700 + PPU, zero FFI)
 // plus a thin handle API the JS/canvas driver calls. Compile with emit-js:
 //   bun run src/main.ts emit-js examples/emulators/snes/snesWebcore.milo -o web/snes-core.js
-// Per frame the driver calls setButtons(h, bits), stepFrame(h), and blits h.rgba
-// (256x224 RGBA) to a canvas. No audio yet (matches the native SDL frontend).
+// Per frame the driver calls setButtons(h, bits), stepFrame(h), blits h.rgba
+// (256x224 RGBA) to a canvas, and drains h.samples (interleaved stereo i16 @32kHz).
 from "./cpu" import {
     Cpu, Mem, busNew, newCpuReset, stepFrame
 }
 from "./ppu" import {
     renderFrame
+}
+from "./spc" import {
+    dspGenerate
 }
 from "./cartcore" import {
     Cart, parseCart
@@ -16,11 +19,17 @@ from "./cartcore" import {
 let SNES_W: i64 = 256
 let SNES_H: i64 = 224
 
+// One video frame of S-DSP output: 535 stereo pairs @ ~32 kHz, same rate the
+// native SDL frontend queues (snes.milo queueAudio).
+let APU_FRAME: i64 = 535
+
 struct SnesHandle {
     cpu: Cpu
     m: Mem
     fb: Vec<i64> // renderFrame target: 0xRRGGBB per pixel, SNES_W * SNES_H
     rgba: Vec<u8> // reused RGBA framebuffer the driver uploads, SNES_W * SNES_H * 4
+    apuBuf: Vec<i64> // dspGenerate scratch, written by index so it stays pre-sized
+    samples: Vec<i16> // interleaved L,R for the frame just stepped; driver drains + clears
 }
 
 // Parse `rom` and boot the machine. On a bad image, boots a tiny stub cart so the
@@ -53,8 +62,17 @@ fn createSnes(rom: Vec<u8>): SnesHandle {
         i = i + 1
     }
 
+    var apuBuf: Vec<i64> = Vec.new()
+    var k: i64 = 0
+    while k < APU_FRAME * 2 {
+        apuBuf.push(0)
+        k = k + 1
+    }
+
+    var samples: Vec<i16> = Vec.new()
+
     return SnesHandle {
-        cpu: cpu, m: m, fb: fb, rgba: rgba,
+        cpu: cpu, m: m, fb: fb, rgba: rgba, apuBuf: apuBuf, samples: samples,
     }
 }
 
@@ -75,6 +93,14 @@ fn setButtons2(h: &mut SnesHandle, j: i64): void {
 // core's per-frame step is also `stepFrame`; Milo has no import aliasing.)
 fn advanceFrame(h: &mut SnesHandle): void {
     stepFrame(h.cpu, h.m)
+
+    dspGenerate(h.m.apuMem, h.apuBuf, APU_FRAME)
+    var s: i64 = 0
+    while s < APU_FRAME * 2 {
+        h.samples.push(h.apuBuf[s] as i16)
+        s = s + 1
+    }
+
     renderFrame(h.m.ppu, h.fb)
     var i: i64 = 0
     while i < SNES_W * SNES_H {

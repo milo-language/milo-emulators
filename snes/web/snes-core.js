@@ -11,15 +11,17 @@ function __eprint(s) { if (typeof process !== 'undefined' && process.stderr) pro
 function __displayVal(v) { if (typeof v === 'string') return JSON.stringify(v); if (typeof v === 'boolean') return String(v); if (typeof v === 'number') return Number.isInteger(v) ? String(v) : __fmtG(v); if (v && typeof v === 'object' && v.constructor && v.constructor.name !== 'Object') return __displayStruct(v); return String(v); }
 function __displayStruct(v) { const ks = Object.keys(v); return v.constructor.name + ' { ' + ks.map(k => k + ': ' + __displayVal(v[k])).join(', ') + ' }'; }
 function __displayEnum(v, name) { const e = __enumMeta[name][v.tag]; return e[1] === 0 ? e[0] : e[0] + '(' + v.data.map(__displayVal).join(', ') + ')'; }
-function __clone(v) { if (v === null || typeof v !== 'object') return v; if (Array.isArray(v)) return v.map(__clone); const o = Object.create(Object.getPrototypeOf(v)); for (const k of Object.keys(v)) o[k] = __clone(v[k]); return o; }
+function __clone(v) { if (v === null || typeof v !== 'object') return v; if (Array.isArray(v)) return v.map(__clone); if (v instanceof Map) return new Map(Array.from(v, ([k, x]) => [k, __clone(x)])); const o = Object.create(Object.getPrototypeOf(v)); for (const k of Object.keys(v)) o[k] = __clone(v[k]); return o; }
 function __eq(a, b) { if (a === b) return true; if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return a === b; if (Array.isArray(a)) return Array.isArray(b) && a.length === b.length && a.every((v, i) => __eq(v, b[i])); const ka = Object.keys(a), kb = Object.keys(b); return ka.length === kb.length && ka.every(k => __eq(a[k], b[k])); }
 
 class SnesHandle {
-  constructor(cpu, m, fb, rgba) {
+  constructor(cpu, m, fb, rgba, apuBuf, samples) {
     this.cpu = cpu;
     this.m = m;
     this.fb = fb;
     this.rgba = rgba;
+    this.apuBuf = apuBuf;
+    this.samples = samples;
   }
 }
 
@@ -39,7 +41,7 @@ class Cpu {
 }
 
 class Mem {
-  constructor(addr, val, testMode, wram, rom, romMask, sram, sramMask, mapMode, mmio, nmitimen, htime, vtime, timeup, wmadd, wrmpya, wrdiv, rddiv, rdmpy, vblankToggle, hcounter, joy1, joy2, apuSpc, apuMem, ppu) {
+  constructor(addr, val, testMode, wram, rom, romMask, sram, sramMask, mapMode, mmio, nmitimen, htime, vtime, timeup, wmadd, wrmpya, wrdiv, rddiv, rdmpy, vblankToggle, hcounter, scanline, joy1, joy2, apuSpc, apuMem, ppu, fxEnabled, fx) {
     this.addr = addr;
     this.val = val;
     this.testMode = testMode;
@@ -61,11 +63,14 @@ class Mem {
     this.rdmpy = rdmpy;
     this.vblankToggle = vblankToggle;
     this.hcounter = hcounter;
+    this.scanline = scanline;
     this.joy1 = joy1;
     this.joy2 = joy2;
     this.apuSpc = apuSpc;
     this.apuMem = apuMem;
     this.ppu = ppu;
+    this.fxEnabled = fxEnabled;
+    this.fx = fx;
   }
 }
 
@@ -81,7 +86,7 @@ class Spc {
 }
 
 class SpcMem {
-  constructor(addr, val, testMode, ram, ipl, iplEnabled, inPort, outPort, tEnable, tTarget, tDiv, tCount, tOut, dspAddr, dsp) {
+  constructor(addr, val, testMode, ram, ipl, iplEnabled, inPort, outPort, tEnable, tTarget, tDiv, tCount, tOut, dspAddr, dsp, vBrrPtr, vInterp, vBuf, vPrev0, vPrev1, vEnv, vPhase, vKonPrev) {
     this.addr = addr;
     this.val = val;
     this.testMode = testMode;
@@ -97,6 +102,14 @@ class SpcMem {
     this.tOut = tOut;
     this.dspAddr = dspAddr;
     this.dsp = dsp;
+    this.vBrrPtr = vBrrPtr;
+    this.vInterp = vInterp;
+    this.vBuf = vBuf;
+    this.vPrev0 = vPrev0;
+    this.vPrev1 = vPrev1;
+    this.vEnv = vEnv;
+    this.vPhase = vPhase;
+    this.vKonPrev = vKonPrev;
   }
 }
 
@@ -162,6 +175,48 @@ class Ppu {
   }
 }
 
+class Fx {
+  constructor(reg, vSign, vZero, vCarry, vOverflow, running, irqPending, alt1, alt2, bflag, sreg, dreg, pbr, rombr, rambr, cbr, color, por, scbr, scmr, cfgr, clsr, bramr, romBuffer, pipe, cacheActive, lastRamAdr, rom, romMask, nRomBanks, ram, ramMask, nRamBanks, cache, mode, screenHeight, realHeight) {
+    this.reg = reg;
+    this.vSign = vSign;
+    this.vZero = vZero;
+    this.vCarry = vCarry;
+    this.vOverflow = vOverflow;
+    this.running = running;
+    this.irqPending = irqPending;
+    this.alt1 = alt1;
+    this.alt2 = alt2;
+    this.bflag = bflag;
+    this.sreg = sreg;
+    this.dreg = dreg;
+    this.pbr = pbr;
+    this.rombr = rombr;
+    this.rambr = rambr;
+    this.cbr = cbr;
+    this.color = color;
+    this.por = por;
+    this.scbr = scbr;
+    this.scmr = scmr;
+    this.cfgr = cfgr;
+    this.clsr = clsr;
+    this.bramr = bramr;
+    this.romBuffer = romBuffer;
+    this.pipe = pipe;
+    this.cacheActive = cacheActive;
+    this.lastRamAdr = lastRamAdr;
+    this.rom = rom;
+    this.romMask = romMask;
+    this.nRomBanks = nRomBanks;
+    this.ram = ram;
+    this.ramMask = ramMask;
+    this.nRamBanks = nRamBanks;
+    this.cache = cache;
+    this.mode = mode;
+    this.screenHeight = screenHeight;
+    this.realHeight = realHeight;
+  }
+}
+
 class Cart {
   constructor(rom, map) {
     this.rom = rom;
@@ -182,6 +237,7 @@ const __enumMeta = {
 
 const SNES_W = 256;
 const SNES_H = 224;
+const APU_FRAME = 535;
 const FC = 1;
 const FZ = 2;
 const FI = 4;
@@ -190,6 +246,17 @@ const FX = 16;
 const FM = 32;
 const FV = 64;
 const FN = 128;
+let joyLatch1 = 0;
+let joyCnt1 = 0;
+let joyLatch2 = 0;
+let joyCnt2 = 0;
+let cpuWaiting = false;
+let fxIrqAck = false;
+let ophctHi = false;
+let opvctHi = false;
+let badOp = (-1);
+let badOpPc = 0;
+let fxFrameBudget = 0;
 const PC_ = 1;
 const PZ = 2;
 const PI = 4;
@@ -198,6 +265,11 @@ const PB = 16;
 const PP = 32;
 const PV = 64;
 const PN = 128;
+let oamReload = 0;
+let fxDbgStarts = 0;
+let fxDbgSteps = 0;
+let fxDbgStops = 0;
+let fxDbgPlots = 0;
 
 function strContains(haystack, needle) {
   return (strIndexOfFrom(haystack, needle, 0) >= 0);
@@ -635,7 +707,14 @@ function createSnes(rom) {
     rgba.push(255);
     i = Math.trunc((i + 1));
   }
-  return new SnesHandle(cpu, m, fb, rgba);
+  let apuBuf = [];
+  let k = 0;
+  while ((k < Math.trunc((APU_FRAME * 2)))) {
+    apuBuf.push(0);
+    k = Math.trunc((k + 1));
+  }
+  let samples = [];
+  return new SnesHandle(cpu, m, fb, rgba, apuBuf, samples);
 }
 
 function setButtons(h, j) {
@@ -648,6 +727,12 @@ function setButtons2(h, j) {
 
 function advanceFrame(h) {
   stepFrame(h.cpu, h.m);
+  dspGenerate(h.m.apuMem, h.apuBuf, APU_FRAME);
+  let s = 0;
+  while ((s < Math.trunc((APU_FRAME * 2)))) {
+    h.samples.push(((h.apuBuf[s] << 16) >> 16));
+    s = Math.trunc((s + 1));
+  }
   renderFrame(h.m.ppu, h.fb);
   let i = 0;
   while ((i < Math.trunc((SNES_W * SNES_H)))) {
@@ -673,12 +758,20 @@ function main() {
   return 0;
 }
 
+function lastBadOp() {
+  return badOp;
+}
+
+function lastBadOpPc() {
+  return badOpPc;
+}
+
 function newApuSpc() {
   return new Spc(0, 0, 0, 0, 0, 0);
 }
 
 function memNew() {
-  return new Mem([], [], true, [], [], 0, [], 0, 0, [], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, newApuSpc(), spcMemNew(), newPpu());
+  return new Mem([], [], true, [], [], 0, [], 0, 0, [], 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, newApuSpc(), spcMemNew(), newPpu(), false, fxNew([]));
 }
 
 function vecZeros(n) {
@@ -698,7 +791,35 @@ function busNew(rom, mapMode) {
     mask = ((mask << 1) >>> 0);
   }
   mask = Math.trunc((mask - 1));
-  let mem = new Mem([], [], false, vecZeros(131072), rom, mask, vecZeros(32768), 32767, mapMode, vecZeros(16384), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, newApuSpc(), spcMemReal(), newPpu());
+  const hdrRam = (() => {
+  if ((mapMode == 1)) {
+    return 65496;
+  } else {
+    return 32728;
+  }
+  })();
+  let sramMask = 32767;
+  if ((hdrRam < len)) {
+    const rs = Math.trunc(rom[hdrRam]);
+    if ((rs == 0)) {
+      sramMask = 0;
+    } else {
+      let sz = ((1024 << rs) >>> 0);
+      if ((sz > 32768)) {
+        sz = 32768;
+      }
+      sramMask = Math.trunc((sz - 1));
+    }
+  }
+  const fxOn = isSuperFx(rom);
+  const gsu = (() => {
+  if (fxOn) {
+    return fxNew(cloneBytes(rom));
+  } else {
+    return fxNew([]);
+  }
+  })();
+  let mem = new Mem([], [], false, vecZeros(131072), rom, mask, vecZeros(32768), sramMask, mapMode, vecZeros(16384), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, newApuSpc(), spcMemReal(), newPpu(), fxOn, gsu);
   mem.apuSpc.pc = 65472;
   mem.apuSpc.sp = 239;
   mem.apuSpc.psw = 2;
@@ -865,7 +986,13 @@ function hdmaApplyReg(m, line, reg, v) {
 }
 
 function hdmaWalkFrame(m) {
-  const brightScalar = ((m.ppu.inidisp & 15) >>> 0);
+  const brightScalar = (() => {
+  if ((((m.ppu.inidisp & 128) >>> 0) != 0)) {
+    return 0;
+  } else {
+    return ((m.ppu.inidisp & 15) >>> 0);
+  }
+  })();
   m.ppu.lineBright[0] = brightScalar;
   m.ppu.lineColdR[0] = m.ppu.coldR;
   m.ppu.lineColdG[0] = m.ppu.coldG;
@@ -966,6 +1093,29 @@ function hdmaWalkFrame(m) {
 }
 
 function mmioRead(m, off) {
+  if ((off == 8508)) {
+    const h = (Math.floor(m.hcounter / 2 ** (2)) % 340);
+    if (ophctHi) {
+      ophctHi = false;
+      return ((Math.floor(h / 2 ** (8)) & 1) >>> 0);
+    }
+    ophctHi = true;
+    return ((h & 255) >>> 0);
+  }
+  if ((off == 8509)) {
+    const v = m.scanline;
+    if (opvctHi) {
+      opvctHi = false;
+      return ((Math.floor(v / 2 ** (8)) & 1) >>> 0);
+    }
+    opvctHi = true;
+    return ((v & 255) >>> 0);
+  }
+  if ((off == 8511)) {
+    ophctHi = false;
+    opvctHi = false;
+    return ((64 | 2) >>> 0);
+  }
   if (((off >= 8448) && (off <= 8511))) {
     return ppuRegReadPure(m.ppu, Math.trunc((off - 8448)));
   }
@@ -999,6 +1149,22 @@ function mmioRead(m, off) {
   }
   if ((off == 16919)) {
     return ((Math.floor(m.rdmpy / 2 ** (8)) & 255) >>> 0);
+  }
+  if ((off == 16406)) {
+    let bit1 = 1;
+    if ((joyCnt1 < 16)) {
+      bit1 = ((Math.floor(joyLatch1 / 2 ** (Math.trunc((15 - joyCnt1)))) & 1) >>> 0);
+      joyCnt1 = Math.trunc((joyCnt1 + 1));
+    }
+    return bit1;
+  }
+  if ((off == 16407)) {
+    let bit2 = 1;
+    if ((joyCnt2 < 16)) {
+      bit2 = ((Math.floor(joyLatch2 / 2 ** (Math.trunc((15 - joyCnt2)))) & 1) >>> 0);
+      joyCnt2 = Math.trunc((joyCnt2 + 1));
+    }
+    return bit2;
   }
   if ((off == 16920)) {
     return ((m.joy1 & 255) >>> 0);
@@ -1044,6 +1210,13 @@ function mmioWrite(m, off, val) {
   }
   if ((off == 8579)) {
     m.wmadd = ((((m.wmadd & 65535) >>> 0) | ((((val & 1) >>> 0) << 16) >>> 0)) >>> 0);
+    return;
+  }
+  if ((off == 16406)) {
+    joyLatch1 = m.joy1;
+    joyCnt1 = 0;
+    joyLatch2 = m.joy2;
+    joyCnt2 = 0;
     return;
   }
   if ((off == 16896)) {
@@ -1164,6 +1337,33 @@ function memRead(m, a) {
   if ((bank == 127)) {
     return Math.trunc(m.wram[Math.trunc((65536 + off))]);
   }
+  if (m.fxEnabled) {
+    const b7 = ((bank & 127) >>> 0);
+    if ((b7 <= 63)) {
+      if (((off >= 12288) && (off <= 13567))) {
+        if ((off == 12337)) {
+          fxIrqAck = true;
+        }
+        return fxRegRead(m.fx, off);
+      }
+      if (((off >= 24576) && (off <= 32767))) {
+        return Math.trunc(m.fx.ram[((Math.trunc((off - 24576)) & m.fx.ramMask) >>> 0)]);
+      }
+    }
+    if ((b7 == 112)) {
+      return Math.trunc(m.fx.ram[((off & m.fx.ramMask) >>> 0)]);
+    }
+    if ((b7 == 113)) {
+      return Math.trunc(m.fx.ram[((Math.trunc((65536 + off)) & m.fx.ramMask) >>> 0)]);
+    }
+    if (((b7 >= 64) && (b7 <= 95))) {
+      const o = ((((((((bank & 63) >>> 0) << 16) >>> 0) | off) >>> 0) & m.romMask) >>> 0);
+      if ((o < m.rom.length)) {
+        return Math.trunc(m.rom[o]);
+      }
+      return 0;
+    }
+  }
   const si = sramIndex(m, bank, off);
   if ((si >= 0)) {
     return Math.trunc(m.sram[si]);
@@ -1208,6 +1408,27 @@ function memWrite(m, a, v) {
   if ((bank == 127)) {
     m.wram[Math.trunc((65536 + off))] = bv;
     return;
+  }
+  if (m.fxEnabled) {
+    const b7 = ((bank & 127) >>> 0);
+    if ((b7 <= 63)) {
+      if (((off >= 12288) && (off <= 13567))) {
+        fxRegWrite(m.fx, off, v);
+        return;
+      }
+      if (((off >= 24576) && (off <= 32767))) {
+        m.fx.ram[((Math.trunc((off - 24576)) & m.fx.ramMask) >>> 0)] = bv;
+        return;
+      }
+    }
+    if ((b7 == 112)) {
+      m.fx.ram[((off & m.fx.ramMask) >>> 0)] = bv;
+      return;
+    }
+    if ((b7 == 113)) {
+      m.fx.ram[((Math.trunc((65536 + off)) & m.fx.ramMask) >>> 0)] = bv;
+      return;
+    }
   }
   const si = sramIndex(m, bank, off);
   if ((si >= 0)) {
@@ -1282,7 +1503,31 @@ function maybeIrq(cpu, m) {
   }
 }
 
+function runFxAndIrq(cpu, m) {
+  if ((!m.fxEnabled)) {
+    return;
+  }
+  if (fxIrqAck) {
+    m.fx.irqPending = false;
+    fxIrqAck = false;
+  }
+  if ((m.fx.running && (fxFrameBudget > 0))) {
+    let burst = 32;
+    if ((burst > fxFrameBudget)) {
+      burst = fxFrameBudget;
+    }
+    const ran = fxRun(m.fx, burst);
+    fxFrameBudget = Math.trunc((fxFrameBudget - ran));
+  }
+  if ((m.fx.irqPending && (((cpu.p & FI) >>> 0) == 0))) {
+    irq(cpu, m);
+  }
+}
+
 function stepFrame(cpu, m) {
+  fxFrameBudget = 700000;
+  const activeSteps = 20000;
+  const vblankSteps = 1400;
   m.timeup = 0;
   let irqAt = (-1);
   if ((((m.nmitimen & 48) >>> 0) != 0)) {
@@ -1290,32 +1535,44 @@ function stepFrame(cpu, m) {
     if ((vt > 224)) {
       vt = 224;
     }
-    irqAt = Math.trunc(Math.trunc(Math.trunc((vt * 7600)) / 224));
+    irqAt = Math.trunc(Math.trunc(Math.trunc((vt * activeSteps)) / 224));
   }
   let fired = false;
+  cpuWaiting = false;
   let i = 0;
-  while ((i < 7600)) {
+  while ((i < activeSteps)) {
     if ((((!fired) && (irqAt >= 0)) && (i >= irqAt))) {
       maybeIrq(cpu, m);
       fired = true;
     }
+    m.scanline = Math.trunc(Math.trunc(Math.trunc((i * 224)) / activeSteps));
     step(cpu, m);
     if ((((i & 3) >>> 0) == 0)) {
       runApu(m, 2);
     }
-    i = Math.trunc((i + 1));
+    runFxAndIrq(cpu, m);
+    if ((cpuWaiting && (!(m.fxEnabled && m.fx.running)))) {
+      cpuWaiting = false;
+      i = activeSteps;
+    } else {
+      cpuWaiting = false;
+      i = Math.trunc((i + 1));
+    }
   }
   hdmaWalkFrame(m);
   m.vblankToggle = 128;
+  ppuVblankOamReload(m.ppu);
   if ((((m.nmitimen & 128) >>> 0) != 0)) {
     nmi(cpu, m);
   }
   i = 0;
-  while ((i < 1400)) {
+  while ((i < vblankSteps)) {
+    m.scanline = Math.trunc((224 + Math.trunc(Math.trunc(Math.trunc((i * 38)) / vblankSteps))));
     step(cpu, m);
     if ((((i & 3) >>> 0) == 0)) {
       runApu(m, 2);
     }
+    runFxAndIrq(cpu, m);
     i = Math.trunc((i + 1));
   }
   m.vblankToggle = 0;
@@ -2908,6 +3165,13 @@ function step(cpu, m) {
     const lo = memRead(m, ((((cpu.pbr << 16) >>> 0) | a0) >>> 0));
     const hi = memRead(m, ((((cpu.pbr << 16) >>> 0) | ((Math.trunc((a0 + 1)) & 65535) >>> 0)) >>> 0));
     cpu.pc = ((lo | ((hi << 8) >>> 0)) >>> 0);
+  } else if (_t1 === 252) {
+    const base = fetch16(cpu, m);
+    push16(cpu, m, ((Math.trunc((cpu.pc - 1)) & 65535) >>> 0));
+    const a0 = ((Math.trunc((base + cpu.x)) & 65535) >>> 0);
+    const lo = memRead(m, ((((cpu.pbr << 16) >>> 0) | a0) >>> 0));
+    const hi = memRead(m, ((((cpu.pbr << 16) >>> 0) | ((Math.trunc((a0 + 1)) & 65535) >>> 0)) >>> 0));
+    cpu.pc = ((lo | ((hi << 8) >>> 0)) >>> 0);
   } else if (_t1 === 220) {
     const ptr = fetch16(cpu, m);
     const t = readPtr24(m, ptr);
@@ -3045,13 +3309,16 @@ function step(cpu, m) {
   } else if (_t1 === 66) {
     const sig = fetch8(cpu, m);
   } else if (_t1 === 203) {
+    cpuWaiting = true;
   } else if (_t1 === 219) {
   } else {
+    badOp = op;
+    badOpPc = ((((cpu.pbr << 16) >>> 0) | ((Math.trunc((cpu.pc - 1)) & 65535) >>> 0)) >>> 0);
   }
 }
 
 function spcMemNew() {
-  return new SpcMem([], [], true, [], [], false, [], [], 0, spcZerosI64(3), spcZerosI64(3), spcZerosI64(3), spcZerosI64(3), 0, []);
+  return new SpcMem([], [], true, [], [], false, [], [], 0, spcZerosI64(3), spcZerosI64(3), spcZerosI64(3), spcZerosI64(3), 0, [], [], [], [], [], [], [], [], 0);
 }
 
 function spcZeros(n) {
@@ -3086,7 +3353,174 @@ function spcZerosI64(n) {
 }
 
 function spcMemReal() {
-  return new SpcMem([], [], false, spcZeros(65536), iplRom(), true, spcZerosI64(4), spcZerosI64(4), 0, spcZerosI64(3), spcZerosI64(3), spcZerosI64(3), spcZerosI64(3), 0, spcZeros(128));
+  return new SpcMem([], [], false, spcZeros(65536), iplRom(), true, spcZerosI64(4), spcZerosI64(4), 0, spcZerosI64(3), spcZerosI64(3), spcZerosI64(3), spcZerosI64(3), 0, spcZeros(128), spcZerosI64(8), spcZerosI64(8), spcZerosI64(128), spcZerosI64(8), spcZerosI64(8), spcZerosI64(8), spcZerosI64(8), 0);
+}
+
+function s8(v) {
+  const x = ((v & 255) >>> 0);
+  if ((x >= 128)) {
+    return Math.trunc((x - 256));
+  }
+  return x;
+}
+
+function dspClamp16(v) {
+  if ((v > 32767)) {
+    return 32767;
+  }
+  if ((v < (-32768))) {
+    return (-32768);
+  }
+  return v;
+}
+
+function dspDecodeBlock(m, v) {
+  const base = ((m.vBrrPtr[v] & 65535) >>> 0);
+  const hdr = Math.trunc(m.ram[base]);
+  const range = ((Math.floor(hdr / 2 ** (4)) & 15) >>> 0);
+  const filter = ((Math.floor(hdr / 2 ** (2)) & 3) >>> 0);
+  let p0 = m.vPrev0[v];
+  let p1 = m.vPrev1[v];
+  let i = 0;
+  while ((i < 16)) {
+    const byte = Math.trunc(m.ram[((Math.trunc((Math.trunc((base + 1)) + Math.floor(i / 2 ** (1)))) & 65535) >>> 0)]);
+    let nib = (() => {
+    if ((((i & 1) >>> 0) == 0)) {
+      return ((Math.floor(byte / 2 ** (4)) & 15) >>> 0);
+    } else {
+      return ((byte & 15) >>> 0);
+    }
+    })();
+    if ((nib >= 8)) {
+      nib = Math.trunc((nib - 16));
+    }
+    let s = 0;
+    if ((range <= 12)) {
+      s = Math.floor(((nib << range) >>> 0) / 2 ** (1));
+    } else {
+      s = ((Math.floor(nib / 2 ** (3)) << 11) >>> 0);
+    }
+    if ((filter == 1)) {
+      s = Math.trunc((Math.trunc((s + p0)) + Math.floor((-p0) / 2 ** (4))));
+    } else {
+      if ((filter == 2)) {
+        s = Math.trunc((Math.trunc((Math.trunc((Math.trunc((s + Math.trunc((p0 * 2)))) + Math.floor(Math.trunc(((-p0) * 3)) / 2 ** (5)))) - p1)) + Math.floor(p1 / 2 ** (4))));
+      } else {
+        if ((filter == 3)) {
+          s = Math.trunc((Math.trunc((Math.trunc((Math.trunc((s + Math.trunc((p0 * 2)))) + Math.floor(Math.trunc(((-p0) * 13)) / 2 ** (6)))) - p1)) + Math.floor(Math.trunc((p1 * 3)) / 2 ** (4))));
+        }
+      }
+    }
+    s = dspClamp16(s);
+    m.vBuf[Math.trunc((Math.trunc((v * 16)) + i))] = s;
+    p1 = p0;
+    p0 = s;
+    i = Math.trunc((i + 1));
+  }
+  m.vPrev0[v] = p0;
+  m.vPrev1[v] = p1;
+  return hdr;
+}
+
+function dspSampleStart(m, srcn) {
+  const dir = ((Math.trunc(m.dsp[93]) << 8) >>> 0);
+  const e = ((Math.trunc((dir + Math.trunc((srcn * 4)))) & 65535) >>> 0);
+  return ((Math.trunc(m.ram[e]) | ((Math.trunc(m.ram[((Math.trunc((e + 1)) & 65535) >>> 0)]) << 8) >>> 0)) >>> 0);
+}
+
+function dspSampleLoop(m, srcn) {
+  const dir = ((Math.trunc(m.dsp[93]) << 8) >>> 0);
+  const e = ((Math.trunc((Math.trunc((dir + Math.trunc((srcn * 4)))) + 2)) & 65535) >>> 0);
+  return ((Math.trunc(m.ram[e]) | ((Math.trunc(m.ram[((Math.trunc((e + 1)) & 65535) >>> 0)]) << 8) >>> 0)) >>> 0);
+}
+
+function dspKeyOn(m, v) {
+  const srcn = Math.trunc(m.dsp[Math.trunc((Math.trunc((v * 16)) + 4))]);
+  m.vBrrPtr[v] = dspSampleStart(m, srcn);
+  m.vInterp[v] = 0;
+  m.vPrev0[v] = 0;
+  m.vPrev1[v] = 0;
+  m.vEnv[v] = 0;
+  m.vPhase[v] = 1;
+  dspDecodeBlock(m, v);
+}
+
+function dspGenerate(m, out, n) {
+  const muted = (((Math.trunc(m.dsp[108]) & 64) >>> 0) != 0);
+  const konNow = Math.trunc(m.dsp[76]);
+  const kofNow = Math.trunc(m.dsp[92]);
+  const newKon = ((konNow & (~m.vKonPrev)) >>> 0);
+  let vk = 0;
+  while ((vk < 8)) {
+    if ((((newKon & ((1 << vk) >>> 0)) >>> 0) != 0)) {
+      dspKeyOn(m, vk);
+    }
+    if (((((kofNow & ((1 << vk) >>> 0)) >>> 0) != 0) && (m.vPhase[vk] != 0))) {
+      m.vPhase[vk] = 4;
+    }
+    vk = Math.trunc((vk + 1));
+  }
+  m.vKonPrev = konNow;
+  const mvolL = s8(Math.trunc(m.dsp[12]));
+  const mvolR = s8(Math.trunc(m.dsp[28]));
+  let i = 0;
+  while ((i < n)) {
+    let accL = 0;
+    let accR = 0;
+    let v = 0;
+    while ((v < 8)) {
+      if ((m.vPhase[v] != 0)) {
+        if ((m.vPhase[v] == 1)) {
+          m.vEnv[v] = Math.trunc((m.vEnv[v] + 64));
+          if ((m.vEnv[v] >= 2047)) {
+            m.vEnv[v] = 2047;
+            m.vPhase[v] = 3;
+          }
+        } else {
+          if ((m.vPhase[v] == 4)) {
+            m.vEnv[v] = Math.trunc((m.vEnv[v] - 32));
+            if ((m.vEnv[v] <= 0)) {
+              m.vEnv[v] = 0;
+              m.vPhase[v] = 0;
+            }
+          }
+        }
+        const idx = ((Math.floor(m.vInterp[v] / 2 ** (12)) & 15) >>> 0);
+        const raw = m.vBuf[Math.trunc((Math.trunc((v * 16)) + idx))];
+        const s = Math.floor(Math.trunc((raw * m.vEnv[v])) / 2 ** (11));
+        accL = Math.trunc((accL + Math.floor(Math.trunc((s * s8(Math.trunc(m.dsp[Math.trunc((Math.trunc((v * 16)) + 0))])))) / 2 ** (7))));
+        accR = Math.trunc((accR + Math.floor(Math.trunc((s * s8(Math.trunc(m.dsp[Math.trunc((Math.trunc((v * 16)) + 1))])))) / 2 ** (7))));
+        const pitch = ((((Math.trunc(m.dsp[Math.trunc((Math.trunc((v * 16)) + 2))]) | ((Math.trunc(m.dsp[Math.trunc((Math.trunc((v * 16)) + 3))]) << 8) >>> 0)) >>> 0) & 16383) >>> 0);
+        m.vInterp[v] = Math.trunc((m.vInterp[v] + pitch));
+        while ((Math.floor(m.vInterp[v] / 2 ** (12)) >= 16)) {
+          m.vInterp[v] = Math.trunc((m.vInterp[v] - ((16 << 12) >>> 0)));
+          const hdr = Math.trunc(m.ram[((m.vBrrPtr[v] & 65535) >>> 0)]);
+          if ((((hdr & 1) >>> 0) != 0)) {
+            if ((((hdr & 2) >>> 0) != 0)) {
+              m.vBrrPtr[v] = dspSampleLoop(m, Math.trunc(m.dsp[Math.trunc((Math.trunc((v * 16)) + 4))]));
+            } else {
+              m.vPhase[v] = 0;
+            }
+          } else {
+            m.vBrrPtr[v] = ((Math.trunc((m.vBrrPtr[v] + 9)) & 65535) >>> 0);
+          }
+          if ((m.vPhase[v] != 0)) {
+            dspDecodeBlock(m, v);
+          }
+        }
+      }
+      v = Math.trunc((v + 1));
+    }
+    let oL = Math.floor(Math.trunc((accL * mvolL)) / 2 ** (7));
+    let oR = Math.floor(Math.trunc((accR * mvolR)) / 2 ** (7));
+    if (muted) {
+      oL = 0;
+      oR = 0;
+    }
+    out[Math.trunc((i * 2))] = dspClamp16(oL);
+    out[Math.trunc((Math.trunc((i * 2)) + 1))] = dspClamp16(oR);
+    i = Math.trunc((i + 1));
+  }
 }
 
 function spcMemReset(m) {
@@ -4442,6 +4876,13 @@ function vramStep(p) {
   return 128;
 }
 
+function ppuVblankOamReload(p) {
+  if ((((p.inidisp & 128) >>> 0) == 0)) {
+    p.oamaddr = oamReload;
+    p.oamHi = false;
+  }
+}
+
 function ppuRegWrite(p, reg, val) {
   const v = ((val & 255) >>> 0);
   if ((reg == 0)) {
@@ -4454,11 +4895,13 @@ function ppuRegWrite(p, reg, val) {
   }
   if ((reg == 2)) {
     p.oamaddr = ((((p.oamaddr & 256) >>> 0) | v) >>> 0);
+    oamReload = p.oamaddr;
     p.oamHi = false;
     return;
   }
   if ((reg == 3)) {
     p.oamaddr = ((((((v & 1) >>> 0) << 8) >>> 0) | ((p.oamaddr & 255) >>> 0)) >>> 0);
+    oamReload = p.oamaddr;
     p.oamHi = false;
     return;
   }
@@ -4937,7 +5380,32 @@ function bgEntryAddr(tmBase, sc, tileX, tileY) {
   return Math.trunc((Math.trunc((Math.trunc((tmBase + Math.trunc((quad * 1024)))) + Math.trunc((((tileY & 31) >>> 0) * 32)))) + ((tileX & 31) >>> 0)));
 }
 
-function renderBGLayer(p, fb, bright, sc, chBase, hofs, vofs, bpp, palBase, layerIdx, screenDisable, wantPrio) {
+function renderBGLayer(p, fb, bright, sc, chBase, hofs, vofs, bpp, palBase, layerIdx, screenDisable, wantPrio, cgMain) {
+  const cgMode = (() => {
+  if ((cgMain && (((p.cgadsub & ((1 << layerIdx) >>> 0)) >>> 0) != 0))) {
+    return (() => {
+    if ((((p.cgadsub & 128) >>> 0) != 0)) {
+      return (() => {
+      if ((((p.cgadsub & 64) >>> 0) != 0)) {
+        return 4;
+      } else {
+        return 3;
+      }
+      })();
+    } else {
+      return (() => {
+      if ((((p.cgadsub & 64) >>> 0) != 0)) {
+        return 2;
+      } else {
+        return 1;
+      }
+      })();
+    }
+    })();
+  } else {
+    return 0;
+  }
+  })();
   const palW = (() => {
   if ((bpp == 4)) {
     return 16;
@@ -4946,18 +5414,50 @@ function renderBGLayer(p, fb, bright, sc, chBase, hofs, vofs, bpp, palBase, laye
   }
   })();
   const tmBase = ((((sc & 252) >>> 0) << 8) >>> 0);
+  const big16 = (((Math.floor(p.bgmode / 2 ** (Math.trunc((4 + layerIdx)))) & 1) >>> 0) != 0);
+  const tileShift = (() => {
+  if (big16) {
+    return 4;
+  } else {
+    return 3;
+  }
+  })();
   const maskX = (() => {
   if ((((sc & 1) >>> 0) != 0)) {
-    return 511;
+    return (() => {
+    if (big16) {
+      return 1023;
+    } else {
+      return 511;
+    }
+    })();
   } else {
-    return 255;
+    return (() => {
+    if (big16) {
+      return 511;
+    } else {
+      return 255;
+    }
+    })();
   }
   })();
   const maskY = (() => {
   if ((((sc & 2) >>> 0) != 0)) {
-    return 511;
+    return (() => {
+    if (big16) {
+      return 1023;
+    } else {
+      return 511;
+    }
+    })();
   } else {
-    return 255;
+    return (() => {
+    if (big16) {
+      return 511;
+    } else {
+      return 255;
+    }
+    })();
   }
   })();
   let y = 0;
@@ -4970,19 +5470,32 @@ function renderBGLayer(p, fb, bright, sc, chBase, hofs, vofs, bpp, palBase, laye
       }
       const ex = ((Math.trunc((x + hofs)) & maskX) >>> 0);
       const ey = ((Math.trunc((y + vofs)) & maskY) >>> 0);
-      const entry = vramWord(p, bgEntryAddr(tmBase, sc, Math.floor(ex / 2 ** (3)), Math.floor(ey / 2 ** (3))));
+      const entry = vramWord(p, bgEntryAddr(tmBase, sc, Math.floor(ex / 2 ** (tileShift)), Math.floor(ey / 2 ** (tileShift))));
       if (((wantPrio >= 0) && (((Math.floor(entry / 2 ** (13)) & 1) >>> 0) != wantPrio))) {
         x = Math.trunc((x + 1));
         continue;
       }
-      const tileNum = ((entry & 1023) >>> 0);
+      const hflip = ((Math.floor(entry / 2 ** (14)) & 1) >>> 0);
+      const vflip = ((Math.floor(entry / 2 ** (15)) & 1) >>> 0);
+      let tileNum = ((entry & 1023) >>> 0);
+      if (big16) {
+        let sx8 = ((Math.floor(ex / 2 ** (3)) & 1) >>> 0);
+        let sy8 = ((Math.floor(ey / 2 ** (3)) & 1) >>> 0);
+        if ((hflip != 0)) {
+          sx8 = Math.trunc((1 - sx8));
+        }
+        if ((vflip != 0)) {
+          sy8 = Math.trunc((1 - sy8));
+        }
+        tileNum = ((Math.trunc((Math.trunc((tileNum + sx8)) + Math.trunc((sy8 * 16)))) & 1023) >>> 0);
+      }
       const pal = ((Math.floor(entry / 2 ** (10)) & 7) >>> 0);
       let px = ((ex & 7) >>> 0);
       let py = ((ey & 7) >>> 0);
-      if ((((Math.floor(entry / 2 ** (14)) & 1) >>> 0) != 0)) {
+      if ((hflip != 0)) {
         px = Math.trunc((7 - px));
       }
-      if ((((Math.floor(entry / 2 ** (15)) & 1) >>> 0) != 0)) {
+      if ((vflip != 0)) {
         py = Math.trunc((7 - py));
       }
       const ci = (() => {
@@ -5006,7 +5519,15 @@ function renderBGLayer(p, fb, bright, sc, chBase, hofs, vofs, bpp, palBase, laye
           return Math.trunc((Math.trunc((palBase + Math.trunc((pal * palW)))) + ci));
         }
         })();
-        fb[Math.trunc((Math.trunc((y * 256)) + x))] = cgToRgb(p, colorIdx, lineBrightAt(p, y, bright));
+        const col = cgToRgb(p, colorIdx, lineBrightAt(p, y, bright));
+        const fi = Math.trunc((Math.trunc((y * 256)) + x));
+        fb[fi] = (() => {
+        if ((cgMode == 0)) {
+          return col;
+        } else {
+          return blendRgb(fb[fi], col, cgMode);
+        }
+        })();
       }
       x = Math.trunc((x + 1));
     }
@@ -5042,7 +5563,7 @@ function renderMode7(p, fb, bright) {
   }
 }
 
-function renderScreenBGs(p, fb, bright, enable, screenDisable) {
+function renderScreenBGs(p, fb, bright, enable, screenDisable, cgMain) {
   const ch1 = ((((p.bg12nba & 15) >>> 0) << 12) >>> 0);
   const ch2 = ((((Math.floor(p.bg12nba / 2 ** (4)) & 15) >>> 0) << 12) >>> 0);
   const ch3 = ((((p.bg34nba & 15) >>> 0) << 12) >>> 0);
@@ -5054,16 +5575,16 @@ function renderScreenBGs(p, fb, bright, enable, screenDisable) {
   const en4 = (((enable & 8) >>> 0) != 0);
   if ((mode == 0)) {
     if (en4) {
-      renderBGLayer(p, fb, bright, p.bgsc3, ch4, p.bghofs[3], p.bgvofs[3], 2, 96, 3, screenDisable, (-1));
+      renderBGLayer(p, fb, bright, p.bgsc3, ch4, p.bghofs[3], p.bgvofs[3], 2, 96, 3, screenDisable, (-1), cgMain);
     }
     if (en3) {
-      renderBGLayer(p, fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 64, 2, screenDisable, (-1));
+      renderBGLayer(p, fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 64, 2, screenDisable, (-1), cgMain);
     }
     if (en2) {
-      renderBGLayer(p, fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 2, 32, 1, screenDisable, (-1));
+      renderBGLayer(p, fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 2, 32, 1, screenDisable, (-1), cgMain);
     }
     if (en1) {
-      renderBGLayer(p, fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 2, 0, 0, screenDisable, (-1));
+      renderBGLayer(p, fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 2, 0, 0, screenDisable, (-1), cgMain);
     }
   } else {
     if ((mode == 7)) {
@@ -5073,20 +5594,20 @@ function renderScreenBGs(p, fb, bright, enable, screenDisable) {
     } else {
       if ((mode == 3)) {
         if (en2) {
-          renderBGLayer(p, fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 4, 0, 1, screenDisable, (-1));
+          renderBGLayer(p, fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 4, 0, 1, screenDisable, (-1), cgMain);
         }
         if (en1) {
-          renderBGLayer(p, fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 8, 0, 0, screenDisable, (-1));
+          renderBGLayer(p, fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 8, 0, 0, screenDisable, (-1), cgMain);
         }
       } else {
         if (en3) {
-          renderBGLayer(p, fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, screenDisable, (-1));
+          renderBGLayer(p, fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, screenDisable, (-1), cgMain);
         }
         if (en2) {
-          renderBGLayer(p, fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 4, 0, 1, screenDisable, (-1));
+          renderBGLayer(p, fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 4, 0, 1, screenDisable, (-1), cgMain);
         }
         if (en1) {
-          renderBGLayer(p, fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 4, 0, 0, screenDisable, (-1));
+          renderBGLayer(p, fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 4, 0, 0, screenDisable, (-1), cgMain);
         }
       }
     }
@@ -5101,6 +5622,39 @@ function clamp5(v) {
     return 31;
   }
   return v;
+}
+
+function clamp8(v) {
+  if ((v < 0)) {
+    return 0;
+  }
+  if ((v > 255)) {
+    return 255;
+  }
+  return v;
+}
+
+function blendRgb(sub, main, cgMode) {
+  const sr = ((Math.floor(sub / 2 ** (16)) & 255) >>> 0);
+  const sg = ((Math.floor(sub / 2 ** (8)) & 255) >>> 0);
+  const sb = ((sub & 255) >>> 0);
+  const mr = ((Math.floor(main / 2 ** (16)) & 255) >>> 0);
+  const mg = ((Math.floor(main / 2 ** (8)) & 255) >>> 0);
+  const mb = ((main & 255) >>> 0);
+  let r = Math.trunc((mr + sr));
+  let g = Math.trunc((mg + sg));
+  let b = Math.trunc((mb + sb));
+  if (((cgMode == 3) || (cgMode == 4))) {
+    r = Math.trunc((mr - sr));
+    g = Math.trunc((mg - sg));
+    b = Math.trunc((mb - sb));
+  }
+  if (((cgMode == 2) || (cgMode == 4))) {
+    r = Math.trunc(Math.trunc(r / 2));
+    g = Math.trunc(Math.trunc(g / 2));
+    b = Math.trunc(Math.trunc(b / 2));
+  }
+  return ((((((clamp8(r) << 16) >>> 0) | ((clamp8(g) << 8) >>> 0)) >>> 0) | clamp8(b)) >>> 0);
 }
 
 function backdropColor(p, bright) {
@@ -5147,47 +5701,47 @@ function renderMode1Main(p, fb, bright) {
   const d = p.tmw;
   const bg3High = (((p.bgmode & 8) >>> 0) != 0);
   if ((en3 && (!bg3High))) {
-    renderBGLayer(p, fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, d, 0);
+    renderBGLayer(p, fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, d, 0, false);
   }
   if (enObj) {
     renderSprites(p, fb, bright, 0);
   }
   if (en3) {
     if ((!bg3High)) {
-      renderBGLayer(p, fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, d, 1);
+      renderBGLayer(p, fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, d, 1, false);
     } else {
-      renderBGLayer(p, fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, d, 0);
+      renderBGLayer(p, fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, d, 0, false);
     }
   }
   if (enObj) {
     renderSprites(p, fb, bright, 1);
   }
   if (en2) {
-    renderBGLayer(p, fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 4, 0, 1, d, 0);
+    renderBGLayer(p, fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 4, 0, 1, d, 0, false);
   }
   if (en1) {
-    renderBGLayer(p, fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 4, 0, 0, d, 0);
+    renderBGLayer(p, fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 4, 0, 0, d, 0, false);
   }
   if (enObj) {
     renderSprites(p, fb, bright, 2);
   }
   if (en2) {
-    renderBGLayer(p, fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 4, 0, 1, d, 1);
+    renderBGLayer(p, fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 4, 0, 1, d, 1, false);
   }
   if (en1) {
-    renderBGLayer(p, fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 4, 0, 0, d, 1);
+    renderBGLayer(p, fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 4, 0, 0, d, 1, false);
   }
   if (enObj) {
     renderSprites(p, fb, bright, 3);
   }
   if ((en3 && bg3High)) {
-    renderBGLayer(p, fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, d, 1);
+    renderBGLayer(p, fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, d, 1, false);
   }
 }
 
 function renderFrame(p, fb) {
   const bright = ((p.inidisp & 15) >>> 0);
-  const forceBlank = (((p.inidisp & 128) >>> 0) != 0);
+  const forceBlank = ((((p.inidisp & 128) >>> 0) != 0) && (!p.hdmaOn));
   const constBackdrop = (() => {
   if (forceBlank) {
     return 0;
@@ -5215,12 +5769,12 @@ function renderFrame(p, fb) {
     return;
   }
   if ((p.ts != 0)) {
-    renderScreenBGs(p, fb, bright, p.ts, p.tsw);
+    renderScreenBGs(p, fb, bright, p.ts, p.tsw, false);
   }
   if ((((p.bgmode & 7) >>> 0) == 1)) {
     renderMode1Main(p, fb, bright);
   } else {
-    renderScreenBGs(p, fb, bright, p.tm, p.tmw);
+    renderScreenBGs(p, fb, bright, p.tm, p.tmw, true);
     if ((((((p.tm | p.ts) >>> 0) & 16) >>> 0) != 0)) {
       renderSprites(p, fb, bright, (-1));
     }
@@ -5233,6 +5787,1289 @@ function ppuVram(p, a) {
 
 function ppuCgram(p, a) {
   return Math.trunc(p.cgram[((a & 511) >>> 0)]);
+}
+
+function fxDbgStat(which) {
+  if ((which == 0)) {
+    return fxDbgStarts;
+  }
+  if ((which == 1)) {
+    return fxDbgSteps;
+  }
+  if ((which == 2)) {
+    return fxDbgStops;
+  }
+  return fxDbgPlots;
+}
+
+function fxRamNonzero(fx) {
+  let count = 0;
+  let i = 0;
+  while ((i < fx.ram.length)) {
+    if ((Math.trunc(fx.ram[i]) != 0)) {
+      count = Math.trunc((count + 1));
+    }
+    i = Math.trunc((i + 1));
+  }
+  return count;
+}
+
+function cloneBytes(src) {
+  let v = [];
+  let i = 0;
+  while ((i < src.length)) {
+    v.push(src[i]);
+    i = Math.trunc((i + 1));
+  }
+  return v;
+}
+
+function vecZerosFx(n) {
+  let v = [];
+  let i = 0;
+  while ((i < n)) {
+    v.push(0);
+    i = Math.trunc((i + 1));
+  }
+  return v;
+}
+
+function fxNew(romClone) {
+  const len = romClone.length;
+  let mask = 1;
+  while ((mask < len)) {
+    mask = ((mask << 1) >>> 0);
+  }
+  mask = Math.trunc((mask - 1));
+  let nrb = Math.floor(len / 2 ** (15));
+  if ((nrb > 32)) {
+    nrb = 32;
+  }
+  if ((nrb < 1)) {
+    nrb = 1;
+  }
+  let reg = [];
+  let i = 0;
+  while ((i < 16)) {
+    reg.push(0);
+    i = Math.trunc((i + 1));
+  }
+  return new Fx(reg, 0, 0, 0, 0, false, false, false, false, false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, false, 0, romClone, mask, nrb, vecZerosFx(131072), 131071, 2, vecZerosFx(512), 0, 128, 128);
+}
+
+function sex8(v) {
+  const b = ((v & 255) >>> 0);
+  if ((((b & 128) >>> 0) != 0)) {
+    return Math.trunc((b - 256));
+  }
+  return b;
+}
+
+function sex16(v) {
+  const b = ((v & 65535) >>> 0);
+  if ((((b & 32768) >>> 0) != 0)) {
+    return Math.trunc((b - 65536));
+  }
+  return b;
+}
+
+function ashr1(s) {
+  return Math.trunc(Math.trunc(((s & (~1)) >>> 0) / 2));
+}
+
+function gsuRomOffset(fx, bank, addr) {
+  const b = ((bank & 127) >>> 0);
+  let off = 0;
+  if ((b >= 64)) {
+    let bb = b;
+    if ((fx.nRomBanks > 1)) {
+      bb = (b % fx.nRomBanks);
+    } else {
+      bb = ((b & 1) >>> 0);
+    }
+    off = Math.trunc((((bb << 16) >>> 0) + ((addr & 65535) >>> 0)));
+  } else {
+    off = Math.trunc((((b << 15) >>> 0) + ((addr & 32767) >>> 0)));
+  }
+  return ((off & fx.romMask) >>> 0);
+}
+
+function gsuRomByte(fx, bank, addr) {
+  const o = gsuRomOffset(fx, bank, addr);
+  if ((o < fx.rom.length)) {
+    return Math.trunc(fx.rom[o]);
+  }
+  return 0;
+}
+
+function prgByte(fx, addr) {
+  const b = ((fx.pbr & 127) >>> 0);
+  if (((b >= 112) && (b <= 115))) {
+    const idx = Math.trunc(((((((b & 3) >>> 0) % fx.nRamBanks) << 16) >>> 0) + ((addr & 65535) >>> 0)));
+    return Math.trunc(fx.ram[((idx & fx.ramMask) >>> 0)]);
+  }
+  return gsuRomByte(fx, fx.pbr, addr);
+}
+
+function gsuRamIdx(fx, adr) {
+  return ((Math.trunc(((((fx.rambr % fx.nRamBanks) << 16) >>> 0) + ((adr & 65535) >>> 0))) & fx.ramMask) >>> 0);
+}
+
+function ramRead(fx, adr) {
+  return Math.trunc(fx.ram[gsuRamIdx(fx, adr)]);
+}
+
+function ramWrite(fx, adr, v) {
+  fx.ram[gsuRamIdx(fx, adr)] = (((v & 255) >>> 0) & 0xFF);
+}
+
+function fetchPipe(fx) {
+  fx.pipe = prgByte(fx, ((fx.reg[15] & 65535) >>> 0));
+}
+
+function r15inc(fx) {
+  fx.reg[15] = ((Math.trunc((fx.reg[15] + 1)) & 65535) >>> 0);
+}
+
+function clrflags(fx) {
+  fx.alt1 = false;
+  fx.alt2 = false;
+  fx.bflag = false;
+  fx.sreg = 0;
+  fx.dreg = 0;
+}
+
+function readR14(fx) {
+  fx.romBuffer = gsuRomByte(fx, fx.rombr, ((fx.reg[14] & 65535) >>> 0));
+}
+
+function setDreg(fx, v) {
+  fx.reg[fx.dreg] = ((v & 4294967295) >>> 0);
+  if ((fx.dreg == 14)) {
+    readR14(fx);
+  }
+}
+
+function sregVal(fx) {
+  return fx.reg[fx.sreg];
+}
+
+function fxUpdateScreen(fx) {
+  let n = 0;
+  if ((((fx.scmr & 4) >>> 0) != 0)) {
+    n = ((n | 1) >>> 0);
+  }
+  if ((((fx.scmr & 32) >>> 0) != 0)) {
+    n = ((n | 2) >>> 0);
+  }
+  if ((n == 0)) {
+    fx.realHeight = 128;
+  } else {
+    if ((n == 1)) {
+      fx.realHeight = 160;
+    } else {
+      if ((n == 2)) {
+        fx.realHeight = 192;
+      } else {
+        fx.realHeight = 256;
+      }
+    }
+  }
+  fx.mode = ((fx.scmr & 3) >>> 0);
+  if ((((fx.por & 16) >>> 0) != 0)) {
+    fx.screenHeight = 256;
+  } else {
+    fx.screenHeight = fx.realHeight;
+  }
+}
+
+function bytesPerTile(mode) {
+  if ((mode == 0)) {
+    return 16;
+  }
+  if ((mode == 3)) {
+    return 64;
+  }
+  return 32;
+}
+
+function planeCount(mode) {
+  if ((mode == 0)) {
+    return 2;
+  }
+  if ((mode == 3)) {
+    return 8;
+  }
+  return 4;
+}
+
+function plotAddr(fx, x, y) {
+  const bpt = bytesPerTile(fx.mode);
+  const tr = Math.floor(y / 2 ** (3));
+  const tc = Math.floor(x / 2 ** (3));
+  let colOff = 0;
+  let rowOff = 0;
+  if ((fx.screenHeight == 256)) {
+    let shift = 0;
+    if ((fx.mode == 1)) {
+      shift = 1;
+    } else {
+      if ((fx.mode >= 2)) {
+        shift = 2;
+      }
+    }
+    rowOff = ((Math.trunc((((((tr & 16) >>> 0) << 9) >>> 0) + ((((tr & 15) >>> 0) << 8) >>> 0))) << shift) >>> 0);
+    colOff = ((Math.trunc((((((tc & 16) >>> 0) << 8) >>> 0) + ((((tc & 15) >>> 0) << 4) >>> 0))) << shift) >>> 0);
+  } else {
+    const tilesPerCol = Math.trunc(Math.trunc(fx.screenHeight / 8));
+    colOff = Math.trunc((Math.trunc((tc * tilesPerCol)) * bpt));
+    rowOff = Math.trunc((tr * bpt));
+  }
+  return Math.trunc((Math.trunc((Math.trunc((((fx.scbr << 10) >>> 0) + colOff)) + rowOff)) + ((((y & 7) >>> 0) << 1) >>> 0)));
+}
+
+function fxPlot(fx) {
+  const x = ((fx.reg[1] & 255) >>> 0);
+  const y = ((fx.reg[2] & 255) >>> 0);
+  r15inc(fx);
+  clrflags(fx);
+  fx.reg[1] = ((Math.trunc((fx.reg[1] + 1)) & 4294967295) >>> 0);
+  if ((y >= fx.screenHeight)) {
+    return;
+  }
+  const planes = planeCount(fx.mode);
+  const colr = ((fx.color & 255) >>> 0);
+  if ((planes == 8)) {
+    if ((((fx.por & 16) >>> 0) == 0)) {
+      if (((((fx.por & 1) >>> 0) == 0) && ((colr == 0) || ((((fx.por & 8) >>> 0) != 0) && (((colr & 15) >>> 0) == 0))))) {
+        return;
+      }
+    } else {
+      if (((((fx.por & 1) >>> 0) == 0) && (colr == 0))) {
+        return;
+      }
+    }
+  } else {
+    if (((((fx.por & 1) >>> 0) == 0) && (((colr & 15) >>> 0) == 0))) {
+      return;
+    }
+  }
+  let c = colr;
+  if (((planes != 8) && (((fx.por & 2) >>> 0) != 0))) {
+    if ((((((x ^ y) >>> 0) & 1) >>> 0) != 0)) {
+      c = ((Math.floor(fx.color / 2 ** (4)) & 255) >>> 0);
+    } else {
+      c = ((fx.color & 255) >>> 0);
+    }
+  }
+  fxDbgPlots = Math.trunc((fxDbgPlots + 1));
+  const base = plotAddr(fx, x, y);
+  const bit = Math.floor(128 / 2 ** (((x & 7) >>> 0)));
+  let p = 0;
+  while ((p < planes)) {
+    const idx = ((Math.trunc((Math.trunc((base + Math.trunc((16 * Math.floor(p / 2 ** (1)))))) + ((p & 1) >>> 0))) & fx.ramMask) >>> 0);
+    if ((((c & ((1 << p) >>> 0)) >>> 0) != 0)) {
+      fx.ram[idx] = (((Math.trunc(fx.ram[idx]) | bit) >>> 0) & 0xFF);
+    } else {
+      fx.ram[idx] = (((Math.trunc(fx.ram[idx]) & (~bit)) >>> 0) & 0xFF);
+    }
+    p = Math.trunc((p + 1));
+  }
+}
+
+function fxRpix(fx) {
+  const x = ((fx.reg[1] & 255) >>> 0);
+  const y = ((fx.reg[2] & 255) >>> 0);
+  r15inc(fx);
+  if ((y >= fx.screenHeight)) {
+    setDreg(fx, 0);
+    clrflags(fx);
+    return;
+  }
+  const planes = planeCount(fx.mode);
+  const base = plotAddr(fx, x, y);
+  const bit = Math.floor(128 / 2 ** (((x & 7) >>> 0)));
+  let v = 0;
+  let p = 0;
+  while ((p < planes)) {
+    const idx = ((Math.trunc((Math.trunc((base + Math.trunc((16 * Math.floor(p / 2 ** (1)))))) + ((p & 1) >>> 0))) & fx.ramMask) >>> 0);
+    if ((((Math.trunc(fx.ram[idx]) & bit) >>> 0) != 0)) {
+      v = ((v | ((1 << p) >>> 0)) >>> 0);
+    }
+    p = Math.trunc((p + 1));
+  }
+  setDreg(fx, v);
+  fx.vZero = v;
+  clrflags(fx);
+}
+
+function fxStop(fx) {
+  fx.running = false;
+  fxDbgStops = Math.trunc((fxDbgStops + 1));
+  if ((((fx.cfgr & 128) >>> 0) == 0)) {
+    fx.irqPending = true;
+  }
+  fx.por = 0;
+  fx.pipe = 1;
+  clrflags(fx);
+  r15inc(fx);
+}
+
+function fxCache(fx) {
+  const c = ((fx.reg[15] & 65520) >>> 0);
+  if (((fx.cbr != c) || (!fx.cacheActive))) {
+    fx.cacheActive = true;
+    fx.cbr = c;
+  }
+  clrflags(fx);
+  r15inc(fx);
+}
+
+function fxBranch(fx, take) {
+  const v = fx.pipe;
+  r15inc(fx);
+  fetchPipe(fx);
+  if (take) {
+    fx.reg[15] = ((Math.trunc((fx.reg[15] + sex8(v))) & 65535) >>> 0);
+  } else {
+    r15inc(fx);
+  }
+}
+
+function testS(fx) {
+  return (((fx.vSign & 32768) >>> 0) != 0);
+}
+
+function testZ(fx) {
+  return (((fx.vZero & 65535) >>> 0) == 0);
+}
+
+function testOV(fx) {
+  return ((fx.vOverflow >= 32768) || (fx.vOverflow < (-32768)));
+}
+
+function testCY(fx) {
+  return (((fx.vCarry & 1) >>> 0) != 0);
+}
+
+function fxStepOne(fx) {
+  const op = fx.pipe;
+  fetchPipe(fx);
+  let alt = 0;
+  if (fx.alt1) {
+    alt = ((alt | 1) >>> 0);
+  }
+  if (fx.alt2) {
+    alt = ((alt | 2) >>> 0);
+  }
+  if ((op < 16)) {
+    if ((op == 0)) {
+      fxStop(fx);
+    } else {
+      if ((op == 1)) {
+        clrflags(fx);
+        r15inc(fx);
+      } else {
+        if ((op == 2)) {
+          fxCache(fx);
+        } else {
+          if ((op == 3)) {
+            const s = sregVal(fx);
+            fx.vCarry = ((s & 1) >>> 0);
+            const v = Math.floor(((s & 65535) >>> 0) / 2 ** (1));
+            r15inc(fx);
+            setDreg(fx, v);
+            fx.vSign = v;
+            fx.vZero = v;
+            clrflags(fx);
+          } else {
+            if ((op == 4)) {
+              const s = sregVal(fx);
+              const v = ((Math.trunc((((s << 1) >>> 0) + fx.vCarry)) & 65535) >>> 0);
+              fx.vCarry = ((Math.floor(s / 2 ** (15)) & 1) >>> 0);
+              r15inc(fx);
+              setDreg(fx, v);
+              fx.vSign = v;
+              fx.vZero = v;
+              clrflags(fx);
+            } else {
+              if ((op == 5)) {
+                fxBranch(fx, true);
+              } else {
+                if ((op == 6)) {
+                  fxBranch(fx, (testS(fx) == testOV(fx)));
+                } else {
+                  if ((op == 7)) {
+                    fxBranch(fx, (testS(fx) != testOV(fx)));
+                  } else {
+                    if ((op == 8)) {
+                      fxBranch(fx, (!testZ(fx)));
+                    } else {
+                      if ((op == 9)) {
+                        fxBranch(fx, testZ(fx));
+                      } else {
+                        if ((op == 10)) {
+                          fxBranch(fx, (!testS(fx)));
+                        } else {
+                          if ((op == 11)) {
+                            fxBranch(fx, testS(fx));
+                          } else {
+                            if ((op == 12)) {
+                              fxBranch(fx, (!testCY(fx)));
+                            } else {
+                              if ((op == 13)) {
+                                fxBranch(fx, testCY(fx));
+                              } else {
+                                if ((op == 14)) {
+                                  fxBranch(fx, (!testOV(fx)));
+                                } else {
+                                  fxBranch(fx, testOV(fx));
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    return;
+  }
+  if ((op < 32)) {
+    const n = ((op & 15) >>> 0);
+    if (fx.bflag) {
+      fx.reg[n] = ((sregVal(fx) & 4294967295) >>> 0);
+      clrflags(fx);
+      if ((n == 14)) {
+        readR14(fx);
+      }
+      if ((n != 15)) {
+        r15inc(fx);
+      }
+    } else {
+      fx.dreg = n;
+      r15inc(fx);
+    }
+    return;
+  }
+  if ((op < 48)) {
+    const n = ((op & 15) >>> 0);
+    fx.bflag = true;
+    fx.sreg = n;
+    fx.dreg = n;
+    r15inc(fx);
+    return;
+  }
+  if ((op < 64)) {
+    if ((op <= 59)) {
+      const n = ((op & 15) >>> 0);
+      const adr = fx.reg[n];
+      fx.lastRamAdr = adr;
+      ramWrite(fx, adr, sregVal(fx));
+      if (((alt != 1) && (alt != 3))) {
+        ramWrite(fx, ((adr ^ 1) >>> 0), Math.floor(sregVal(fx) / 2 ** (8)));
+      }
+      clrflags(fx);
+      r15inc(fx);
+    } else {
+      if ((op == 60)) {
+        fx.reg[12] = ((Math.trunc((fx.reg[12] - 1)) & 4294967295) >>> 0);
+        fx.vSign = fx.reg[12];
+        fx.vZero = fx.reg[12];
+        if ((((fx.reg[12] & 65535) >>> 0) != 0)) {
+          fx.reg[15] = ((fx.reg[13] & 65535) >>> 0);
+        } else {
+          r15inc(fx);
+        }
+        clrflags(fx);
+      } else {
+        if ((op == 61)) {
+          fx.alt1 = true;
+          fx.bflag = false;
+          r15inc(fx);
+        } else {
+          if ((op == 62)) {
+            fx.alt2 = true;
+            fx.bflag = false;
+            r15inc(fx);
+          } else {
+            fx.alt1 = true;
+            fx.alt2 = true;
+            fx.bflag = false;
+            r15inc(fx);
+          }
+        }
+      }
+    }
+    return;
+  }
+  if ((op < 80)) {
+    if ((op <= 75)) {
+      const n = ((op & 15) >>> 0);
+      const adr = fx.reg[n];
+      fx.lastRamAdr = adr;
+      let v = ramRead(fx, adr);
+      if (((alt != 1) && (alt != 3))) {
+        v = ((v | ((ramRead(fx, ((adr ^ 1) >>> 0)) << 8) >>> 0)) >>> 0);
+      }
+      r15inc(fx);
+      setDreg(fx, v);
+      clrflags(fx);
+    } else {
+      if ((op == 76)) {
+        if (((alt == 1) || (alt == 3))) {
+          fxRpix(fx);
+        } else {
+          fxPlot(fx);
+        }
+      } else {
+        if ((op == 77)) {
+          const s = sregVal(fx);
+          const v = ((((((s & 255) >>> 0) << 8) >>> 0) | ((Math.floor(s / 2 ** (8)) & 255) >>> 0)) >>> 0);
+          r15inc(fx);
+          setDreg(fx, v);
+          fx.vSign = v;
+          fx.vZero = v;
+          clrflags(fx);
+        } else {
+          if ((op == 78)) {
+            if (((alt == 1) || (alt == 3))) {
+              fx.por = ((sregVal(fx) & 255) >>> 0);
+              fxUpdateScreen(fx);
+            } else {
+              let c = ((sregVal(fx) & 255) >>> 0);
+              if ((((fx.por & 4) >>> 0) != 0)) {
+                c = ((((c & 240) >>> 0) | ((Math.floor(c / 2 ** (4)) & 15) >>> 0)) >>> 0);
+              }
+              if ((((fx.por & 8) >>> 0) != 0)) {
+                fx.color = ((((fx.color & 240) >>> 0) | ((c & 15) >>> 0)) >>> 0);
+              } else {
+                fx.color = ((c & 255) >>> 0);
+              }
+            }
+            clrflags(fx);
+            r15inc(fx);
+          } else {
+            const v = (((~sregVal(fx)) & 4294967295) >>> 0);
+            r15inc(fx);
+            setDreg(fx, v);
+            fx.vSign = v;
+            fx.vZero = v;
+            clrflags(fx);
+          }
+        }
+      }
+    }
+    return;
+  }
+  if ((op < 96)) {
+    const n = ((op & 15) >>> 0);
+    const a = ((sregVal(fx) & 65535) >>> 0);
+    const bRaw = (() => {
+    if ((alt <= 1)) {
+      return fx.reg[n];
+    } else {
+      return n;
+    }
+    })();
+    const b = ((bRaw & 65535) >>> 0);
+    let t = 0;
+    if ((alt == 0)) {
+      t = Math.trunc((a + b));
+    } else {
+      if ((alt == 1)) {
+        t = Math.trunc((Math.trunc((a + b)) + fx.vCarry));
+      } else {
+        if ((alt == 2)) {
+          t = Math.trunc((a + b));
+        } else {
+          t = Math.trunc((Math.trunc((a + b)) + fx.vCarry));
+        }
+      }
+    }
+    fx.vCarry = (() => {
+    if ((t >= 65536)) {
+      return 1;
+    } else {
+      return 0;
+    }
+    })();
+    fx.vOverflow = (((((~((sregVal(fx) ^ bRaw) >>> 0)) & ((bRaw ^ t) >>> 0)) >>> 0) & 32768) >>> 0);
+    fx.vSign = t;
+    fx.vZero = t;
+    r15inc(fx);
+    setDreg(fx, t);
+    clrflags(fx);
+    return;
+  }
+  if ((op < 112)) {
+    const n = ((op & 15) >>> 0);
+    const a = ((sregVal(fx) & 65535) >>> 0);
+    const bRaw = (() => {
+    if ((alt == 2)) {
+      return n;
+    } else {
+      return fx.reg[n];
+    }
+    })();
+    const b = ((bRaw & 65535) >>> 0);
+    let t = 0;
+    if ((alt == 0)) {
+      t = Math.trunc((a - b));
+    } else {
+      if ((alt == 1)) {
+        t = Math.trunc((Math.trunc((a - b)) - ((fx.vCarry ^ 1) >>> 0)));
+      } else {
+        if ((alt == 2)) {
+          t = Math.trunc((a - b));
+        } else {
+          t = Math.trunc((a - b));
+        }
+      }
+    }
+    fx.vCarry = (() => {
+    if ((t >= 0)) {
+      return 1;
+    } else {
+      return 0;
+    }
+    })();
+    fx.vOverflow = ((((((sregVal(fx) ^ bRaw) >>> 0) & ((sregVal(fx) ^ t) >>> 0)) >>> 0) & 32768) >>> 0);
+    fx.vSign = t;
+    fx.vZero = t;
+    r15inc(fx);
+    if ((alt != 3)) {
+      setDreg(fx, t);
+    }
+    clrflags(fx);
+    return;
+  }
+  if ((op < 128)) {
+    if ((op == 112)) {
+      const v = ((((fx.reg[7] & 65280) >>> 0) | Math.floor(((fx.reg[8] & 65280) >>> 0) / 2 ** (8))) >>> 0);
+      r15inc(fx);
+      setDreg(fx, v);
+      fx.vOverflow = ((((v & 49344) >>> 0) << 16) >>> 0);
+      fx.vZero = (() => {
+      if ((((v & 61680) >>> 0) != 0)) {
+        return 0;
+      } else {
+        return 1;
+      }
+      })();
+      fx.vSign = ((((v | ((v << 8) >>> 0)) >>> 0) & 32768) >>> 0);
+      fx.vCarry = (() => {
+      if ((((v & 57568) >>> 0) != 0)) {
+        return 1;
+      } else {
+        return 0;
+      }
+      })();
+      clrflags(fx);
+    } else {
+      const n = ((op & 15) >>> 0);
+      const s = sregVal(fx);
+      let v = 0;
+      if ((alt == 0)) {
+        v = ((s & fx.reg[n]) >>> 0);
+      } else {
+        if ((alt == 1)) {
+          v = ((s & (~fx.reg[n])) >>> 0);
+        } else {
+          if ((alt == 2)) {
+            v = ((s & n) >>> 0);
+          } else {
+            v = ((s & (~n)) >>> 0);
+          }
+        }
+      }
+      v = ((v & 4294967295) >>> 0);
+      r15inc(fx);
+      setDreg(fx, v);
+      fx.vSign = v;
+      fx.vZero = v;
+      clrflags(fx);
+    }
+    return;
+  }
+  if ((op < 144)) {
+    const n = ((op & 15) >>> 0);
+    const s = sregVal(fx);
+    let v = 0;
+    if ((alt == 0)) {
+      v = Math.trunc((sex8(s) * sex8(fx.reg[n])));
+    } else {
+      if ((alt == 1)) {
+        v = Math.trunc((((s & 255) >>> 0) * ((fx.reg[n] & 255) >>> 0)));
+      } else {
+        if ((alt == 2)) {
+          v = Math.trunc((sex8(s) * n));
+        } else {
+          v = Math.trunc((((s & 255) >>> 0) * n));
+        }
+      }
+    }
+    v = ((v & 4294967295) >>> 0);
+    r15inc(fx);
+    setDreg(fx, v);
+    fx.vSign = v;
+    fx.vZero = v;
+    clrflags(fx);
+    return;
+  }
+  if ((op < 160)) {
+    if ((op == 144)) {
+      ramWrite(fx, fx.lastRamAdr, sregVal(fx));
+      ramWrite(fx, ((fx.lastRamAdr ^ 1) >>> 0), Math.floor(sregVal(fx) / 2 ** (8)));
+      clrflags(fx);
+      r15inc(fx);
+    } else {
+      if (((op >= 145) && (op <= 148))) {
+        fx.reg[11] = ((Math.trunc((fx.reg[15] + ((op & 15) >>> 0))) & 4294967295) >>> 0);
+        clrflags(fx);
+        r15inc(fx);
+      } else {
+        if ((op == 149)) {
+          const v = ((sex8(sregVal(fx)) & 4294967295) >>> 0);
+          r15inc(fx);
+          setDreg(fx, v);
+          fx.vSign = v;
+          fx.vZero = v;
+          clrflags(fx);
+        } else {
+          if ((op == 150)) {
+            const s = sregVal(fx);
+            fx.vCarry = ((s & 1) >>> 0);
+            let v = 0;
+            if (((alt == 1) || (alt == 3))) {
+              const sv = sex16(s);
+              if ((sv == (-1))) {
+                v = 0;
+              } else {
+                v = ((ashr1(sv) & 4294967295) >>> 0);
+              }
+            } else {
+              v = ((ashr1(sex16(s)) & 4294967295) >>> 0);
+            }
+            r15inc(fx);
+            setDreg(fx, v);
+            fx.vSign = v;
+            fx.vZero = v;
+            clrflags(fx);
+          } else {
+            if ((op == 151)) {
+              const s = sregVal(fx);
+              const v = ((Math.floor(((s & 65535) >>> 0) / 2 ** (1)) | ((fx.vCarry << 15) >>> 0)) >>> 0);
+              fx.vCarry = ((s & 1) >>> 0);
+              r15inc(fx);
+              setDreg(fx, v);
+              fx.vSign = v;
+              fx.vZero = v;
+              clrflags(fx);
+            } else {
+              if (((op >= 152) && (op <= 157))) {
+                const n = ((op & 15) >>> 0);
+                if (((alt == 1) || (alt == 3))) {
+                  fx.pbr = ((fx.reg[n] & 127) >>> 0);
+                  fx.reg[15] = ((sregVal(fx) & 65535) >>> 0);
+                  fx.cacheActive = true;
+                  fx.cbr = ((fx.reg[15] & 65520) >>> 0);
+                  clrflags(fx);
+                } else {
+                  fx.reg[15] = ((fx.reg[n] & 65535) >>> 0);
+                  clrflags(fx);
+                }
+              } else {
+                if ((op == 158)) {
+                  const v = ((sregVal(fx) & 255) >>> 0);
+                  r15inc(fx);
+                  setDreg(fx, v);
+                  fx.vSign = ((v << 8) >>> 0);
+                  fx.vZero = ((v << 8) >>> 0);
+                  clrflags(fx);
+                } else {
+                  const c = ((Math.trunc((sex16(sregVal(fx)) * sex16(fx.reg[6]))) & 4294967295) >>> 0);
+                  const v = ((Math.floor(c / 2 ** (16)) & 65535) >>> 0);
+                  if (((alt == 1) || (alt == 3))) {
+                    fx.reg[4] = c;
+                  }
+                  r15inc(fx);
+                  setDreg(fx, v);
+                  fx.vSign = v;
+                  fx.vZero = v;
+                  fx.vCarry = ((Math.floor(c / 2 ** (15)) & 1) >>> 0);
+                  clrflags(fx);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    return;
+  }
+  if ((op < 176)) {
+    const n = ((op & 15) >>> 0);
+    if ((alt == 0)) {
+      const v = fx.pipe;
+      r15inc(fx);
+      fetchPipe(fx);
+      r15inc(fx);
+      fx.reg[n] = ((sex8(v) & 4294967295) >>> 0);
+      if ((n == 14)) {
+        readR14(fx);
+      }
+      clrflags(fx);
+    } else {
+      if ((alt == 2)) {
+        const v = fx.reg[n];
+        const adr = ((fx.pipe << 1) >>> 0);
+        fx.lastRamAdr = adr;
+        r15inc(fx);
+        fetchPipe(fx);
+        ramWrite(fx, adr, v);
+        ramWrite(fx, Math.trunc((adr + 1)), Math.floor(v / 2 ** (8)));
+        clrflags(fx);
+        r15inc(fx);
+      } else {
+        const adr = ((fx.pipe << 1) >>> 0);
+        fx.lastRamAdr = adr;
+        r15inc(fx);
+        fetchPipe(fx);
+        r15inc(fx);
+        let v = ramRead(fx, adr);
+        v = ((v | ((ramRead(fx, Math.trunc((adr + 1))) << 8) >>> 0)) >>> 0);
+        fx.reg[n] = ((v & 4294967295) >>> 0);
+        if ((n == 14)) {
+          readR14(fx);
+        }
+        clrflags(fx);
+      }
+    }
+    return;
+  }
+  if ((op < 192)) {
+    const n = ((op & 15) >>> 0);
+    if (fx.bflag) {
+      const v = fx.reg[n];
+      r15inc(fx);
+      setDreg(fx, v);
+      fx.vOverflow = ((((v & 128) >>> 0) << 16) >>> 0);
+      fx.vSign = v;
+      fx.vZero = v;
+      clrflags(fx);
+    } else {
+      fx.sreg = n;
+      r15inc(fx);
+    }
+    return;
+  }
+  if ((op < 208)) {
+    if ((op == 192)) {
+      const v = ((Math.floor(sregVal(fx) / 2 ** (8)) & 255) >>> 0);
+      r15inc(fx);
+      setDreg(fx, v);
+      fx.vSign = ((v << 8) >>> 0);
+      fx.vZero = ((v << 8) >>> 0);
+      clrflags(fx);
+    } else {
+      const n = ((op & 15) >>> 0);
+      const s = sregVal(fx);
+      let v = 0;
+      if ((alt == 0)) {
+        v = ((s | fx.reg[n]) >>> 0);
+      } else {
+        if ((alt == 1)) {
+          v = ((s ^ fx.reg[n]) >>> 0);
+        } else {
+          if ((alt == 2)) {
+            v = ((s | n) >>> 0);
+          } else {
+            v = ((s ^ n) >>> 0);
+          }
+        }
+      }
+      v = ((v & 4294967295) >>> 0);
+      r15inc(fx);
+      setDreg(fx, v);
+      fx.vSign = v;
+      fx.vZero = v;
+      clrflags(fx);
+    }
+    return;
+  }
+  if ((op < 224)) {
+    if ((op <= 222)) {
+      const n = ((op & 15) >>> 0);
+      fx.reg[n] = ((Math.trunc((fx.reg[n] + 1)) & 4294967295) >>> 0);
+      fx.vSign = fx.reg[n];
+      fx.vZero = fx.reg[n];
+      if ((n == 14)) {
+        readR14(fx);
+      }
+      clrflags(fx);
+      r15inc(fx);
+    } else {
+      if ((alt == 2)) {
+        fx.rambr = (sregVal(fx) % fx.nRamBanks);
+        clrflags(fx);
+        r15inc(fx);
+      } else {
+        if ((alt == 3)) {
+          fx.rombr = ((sregVal(fx) & 127) >>> 0);
+          clrflags(fx);
+          r15inc(fx);
+        } else {
+          let c = ((fx.romBuffer & 255) >>> 0);
+          if ((((fx.por & 4) >>> 0) != 0)) {
+            c = ((((c & 240) >>> 0) | ((Math.floor(c / 2 ** (4)) & 15) >>> 0)) >>> 0);
+          }
+          if ((((fx.por & 8) >>> 0) != 0)) {
+            fx.color = ((((fx.color & 240) >>> 0) | ((c & 15) >>> 0)) >>> 0);
+          } else {
+            fx.color = ((c & 255) >>> 0);
+          }
+          clrflags(fx);
+          r15inc(fx);
+        }
+      }
+    }
+    return;
+  }
+  if ((op < 240)) {
+    if ((op <= 238)) {
+      const n = ((op & 15) >>> 0);
+      fx.reg[n] = ((Math.trunc((fx.reg[n] - 1)) & 4294967295) >>> 0);
+      fx.vSign = fx.reg[n];
+      fx.vZero = fx.reg[n];
+      if ((n == 14)) {
+        readR14(fx);
+      }
+      clrflags(fx);
+      r15inc(fx);
+    } else {
+      const rb = ((fx.romBuffer & 255) >>> 0);
+      let v = 0;
+      if ((alt == 1)) {
+        v = ((((sregVal(fx) & 255) >>> 0) | ((rb << 8) >>> 0)) >>> 0);
+      } else {
+        if ((alt == 2)) {
+          v = ((((sregVal(fx) & 65280) >>> 0) | rb) >>> 0);
+        } else {
+          if ((alt == 3)) {
+            v = ((sex8(rb) & 4294967295) >>> 0);
+          } else {
+            v = rb;
+          }
+        }
+      }
+      r15inc(fx);
+      setDreg(fx, v);
+      clrflags(fx);
+    }
+    return;
+  }
+  const n = ((op & 15) >>> 0);
+  if ((alt == 0)) {
+    const lo = fx.pipe;
+    r15inc(fx);
+    fetchPipe(fx);
+    r15inc(fx);
+    const hi = fx.pipe;
+    fetchPipe(fx);
+    r15inc(fx);
+    fx.reg[n] = ((((lo | ((hi << 8) >>> 0)) >>> 0) & 4294967295) >>> 0);
+    if ((n == 14)) {
+      readR14(fx);
+    }
+    clrflags(fx);
+  } else {
+    if ((alt == 2)) {
+      const v = fx.reg[n];
+      let adr = fx.pipe;
+      r15inc(fx);
+      fetchPipe(fx);
+      r15inc(fx);
+      adr = ((adr | ((fx.pipe << 8) >>> 0)) >>> 0);
+      fetchPipe(fx);
+      fx.lastRamAdr = adr;
+      ramWrite(fx, adr, v);
+      ramWrite(fx, ((adr ^ 1) >>> 0), Math.floor(v / 2 ** (8)));
+      clrflags(fx);
+      r15inc(fx);
+    } else {
+      let adr = fx.pipe;
+      r15inc(fx);
+      fetchPipe(fx);
+      r15inc(fx);
+      adr = ((adr | ((fx.pipe << 8) >>> 0)) >>> 0);
+      fetchPipe(fx);
+      r15inc(fx);
+      fx.lastRamAdr = adr;
+      let v = ramRead(fx, adr);
+      v = ((v | ((ramRead(fx, ((adr ^ 1) >>> 0)) << 8) >>> 0)) >>> 0);
+      fx.reg[n] = ((v & 4294967295) >>> 0);
+      if ((n == 14)) {
+        readR14(fx);
+      }
+      clrflags(fx);
+    }
+  }
+}
+
+function fxRun(fx, maxSteps) {
+  if ((!fx.running)) {
+    return 0;
+  }
+  fxUpdateScreen(fx);
+  let i = 0;
+  while (((i < maxSteps) && fx.running)) {
+    fxStepOne(fx);
+    i = Math.trunc((i + 1));
+  }
+  fxDbgSteps = Math.trunc((fxDbgSteps + i));
+  return i;
+}
+
+function composeSfr(fx) {
+  let s = 0;
+  if ((((fx.vZero & 65535) >>> 0) == 0)) {
+    s = ((s | 2) >>> 0);
+  }
+  if ((((fx.vCarry & 1) >>> 0) != 0)) {
+    s = ((s | 4) >>> 0);
+  }
+  if ((((fx.vSign & 32768) >>> 0) != 0)) {
+    s = ((s | 8) >>> 0);
+  }
+  if (((fx.vOverflow >= 32768) || (fx.vOverflow < (-32768)))) {
+    s = ((s | 16) >>> 0);
+  }
+  if (fx.running) {
+    s = ((s | 32) >>> 0);
+  }
+  if (fx.alt1) {
+    s = ((s | 256) >>> 0);
+  }
+  if (fx.alt2) {
+    s = ((s | 512) >>> 0);
+  }
+  if (fx.bflag) {
+    s = ((s | 4096) >>> 0);
+  }
+  if (fx.irqPending) {
+    s = ((s | 32768) >>> 0);
+  }
+  return s;
+}
+
+function fxStart(fx) {
+  if ((!fx.running)) {
+    fx.running = true;
+    fxDbgStarts = Math.trunc((fxDbgStarts + 1));
+  }
+}
+
+function fxRegRead(fx, addr) {
+  if (((addr >= 12288) && (addr <= 12319))) {
+    const i = Math.floor(Math.trunc((addr - 12288)) / 2 ** (1));
+    const byte = ((addr & 1) >>> 0);
+    return ((Math.floor(fx.reg[i] / 2 ** (Math.trunc((8 * byte)))) & 255) >>> 0);
+  }
+  if ((addr == 12336)) {
+    return ((composeSfr(fx) & 255) >>> 0);
+  }
+  if ((addr == 12337)) {
+    return ((Math.floor(composeSfr(fx) / 2 ** (8)) & 255) >>> 0);
+  }
+  if ((addr == 12339)) {
+    return fx.bramr;
+  }
+  if ((addr == 12340)) {
+    return fx.pbr;
+  }
+  if ((addr == 12342)) {
+    return fx.rombr;
+  }
+  if ((addr == 12343)) {
+    return fx.cfgr;
+  }
+  if ((addr == 12344)) {
+    return fx.scbr;
+  }
+  if ((addr == 12345)) {
+    return fx.clsr;
+  }
+  if ((addr == 12346)) {
+    return fx.scmr;
+  }
+  if ((addr == 12347)) {
+    return 0;
+  }
+  if ((addr == 12348)) {
+    return fx.rambr;
+  }
+  if ((addr == 12350)) {
+    return ((fx.cbr & 255) >>> 0);
+  }
+  if ((addr == 12351)) {
+    return ((Math.floor(fx.cbr / 2 ** (8)) & 255) >>> 0);
+  }
+  if (((addr >= 12544) && (addr <= 13055))) {
+    return Math.trunc(fx.cache[Math.trunc((addr - 12544))]);
+  }
+  return 0;
+}
+
+function fxRegWrite(fx, addr, v) {
+  const val = ((v & 255) >>> 0);
+  if (((addr >= 12288) && (addr <= 12319))) {
+    const i = Math.floor(Math.trunc((addr - 12288)) / 2 ** (1));
+    const byte = ((addr & 1) >>> 0);
+    if ((byte == 0)) {
+      fx.reg[i] = ((((fx.reg[i] & 4294967040) >>> 0) | val) >>> 0);
+    } else {
+      fx.reg[i] = ((((fx.reg[i] & 4294902015) >>> 0) | ((val << 8) >>> 0)) >>> 0);
+    }
+    if ((addr == 12319)) {
+      fxStart(fx);
+    }
+    return;
+  }
+  if ((addr == 12336)) {
+    fx.vZero = (() => {
+    if ((((val & 2) >>> 0) != 0)) {
+      return 0;
+    } else {
+      return 1;
+    }
+    })();
+    fx.vCarry = ((Math.floor(val / 2 ** (2)) & 1) >>> 0);
+    fx.vSign = (() => {
+    if ((((val & 8) >>> 0) != 0)) {
+      return 32768;
+    } else {
+      return 0;
+    }
+    })();
+    fx.vOverflow = (() => {
+    if ((((val & 16) >>> 0) != 0)) {
+      return 32768;
+    } else {
+      return 0;
+    }
+    })();
+    if ((((val & 32) >>> 0) != 0)) {
+      fxStart(fx);
+    } else {
+      fx.running = false;
+      fx.cacheActive = false;
+    }
+    return;
+  }
+  if ((addr == 12337)) {
+    return;
+  }
+  if ((addr == 12339)) {
+    fx.bramr = val;
+    return;
+  }
+  if ((addr == 12340)) {
+    fx.pbr = ((val & 127) >>> 0);
+    return;
+  }
+  if ((addr == 12342)) {
+    fx.rombr = ((val & 127) >>> 0);
+    return;
+  }
+  if ((addr == 12343)) {
+    fx.cfgr = val;
+    return;
+  }
+  if ((addr == 12344)) {
+    fx.scbr = val;
+    fxUpdateScreen(fx);
+    return;
+  }
+  if ((addr == 12345)) {
+    fx.clsr = val;
+    return;
+  }
+  if ((addr == 12346)) {
+    fx.scmr = val;
+    fxUpdateScreen(fx);
+    return;
+  }
+  if ((addr == 12348)) {
+    fx.rambr = (val % fx.nRamBanks);
+    return;
+  }
+  if ((addr == 12350)) {
+    fx.cbr = ((((fx.cbr & 65280) >>> 0) | val) >>> 0);
+    return;
+  }
+  if ((addr == 12351)) {
+    fx.cbr = ((((fx.cbr & 255) >>> 0) | ((val << 8) >>> 0)) >>> 0);
+    return;
+  }
+  if (((addr >= 12544) && (addr <= 13055))) {
+    fx.cache[Math.trunc((addr - 12544))] = (val & 0xFF);
+    return;
+  }
+}
+
+function fxTestRun(program, seed, carry, steps) {
+  let rom = [];
+  let i = 0;
+  while ((i < 32768)) {
+    if ((i < program.length)) {
+      rom.push(program[i]);
+    } else {
+      rom.push(0);
+    }
+    i = Math.trunc((i + 1));
+  }
+  let fx = fxNew(rom);
+  i = 0;
+  while ((i < 16)) {
+    fx.reg[i] = ((seed[i] & 4294967295) >>> 0);
+    i = Math.trunc((i + 1));
+  }
+  fx.vCarry = ((carry & 1) >>> 0);
+  fx.vZero = 1;
+  fx.vSign = 0;
+  fx.vOverflow = 0;
+  fx.reg[15] = 0;
+  fx.pbr = 0;
+  fx.pipe = 1;
+  fx.running = true;
+  let n = 0;
+  while (((n < steps) && fx.running)) {
+    fxStepOne(fx);
+    n = Math.trunc((n + 1));
+  }
+  let out = [];
+  i = 0;
+  while ((i < 16)) {
+    out.push(((fx.reg[i] & 65535) >>> 0));
+    i = Math.trunc((i + 1));
+  }
+  out.push(((composeSfr(fx) & 65535) >>> 0));
+  return out;
+}
+
+function isSuperFx(rom) {
+  if ((rom.length < 32768)) {
+    return false;
+  }
+  const t = Math.trunc(rom[32726]);
+  return ((((t == 19) || (t == 20)) || (t == 21)) || (t == 26));
 }
 
 function u16At(data, i) {

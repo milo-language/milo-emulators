@@ -39,6 +39,25 @@
   .keys { color: #8b949e; font-size: 12px; text-align: center; }
   .keys b { color: #e6edf3; }
   .sub { color: #8b949e; font-size: 13px; margin-top: -8px; }
+  /* The no-select rule above exists so dragging on the touch pad can't select the
+     UI; prose is not part of that, so let it be selected and copied normally. */
+  h1, .sub, #status, .keys, .built, .games-label { -webkit-user-select: text; user-select: text; }
+  /* Game picker: the primary call to action on the page, so give it more weight
+     than the utility row above it. */
+  .games { flex-direction: column; gap: 10px; }
+  .games-label {
+    color: #8b949e; font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  }
+  .games-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .games-row button {
+    background: #161b22; padding: 9px 18px;
+    transition: background .12s ease, border-color .12s ease, transform .12s ease;
+  }
+  .games-row button:hover { background: #21262d; border-color: #d29922; transform: translateY(-1px); }
+  .games-row button:active { transform: translateY(0); }
+  .built { color: #8b949e; font-size: 12px; text-align: center; max-width: 620px; padding: 0 16px; }
+  .built a { color: #58a6ff; text-decoration: none; }
+  .built a:hover { text-decoration: underline; }
   #sysnav { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
   #sysnav a {
     background: #21262d; color: #e6edf3; border: 1px solid #30363d;
@@ -63,6 +82,10 @@
   .face { display: grid; grid-template-columns: repeat(3, 54px); grid-template-rows: repeat(2, 54px); gap: 8px; }
   .mid { display: flex; gap: 10px; }
   .mid .tb { width: auto; height: 34px; border-radius: 17px; padding: 0 16px; font-size: 12px; }
+  /* Real NES controller: round red A/B, flat grey Select/Start pills. */
+  .face .tb { background: #b8302c; border-color: #d4514d; color: #fff; }
+  .face .tb.pressed { filter: brightness(1.6); }
+  .mid .tb { background: #4a4f55; border-color: #6b7178; color: #d7dde3; }
 </style>
 </head>
 <body>
@@ -91,14 +114,16 @@
 </div>
 
 <!-- One-click free homebrew (fetched from retrobrews' own CORS-open hosting) -->
-<div id="bar">
-  <span style="color:#8b949e">Free homebrew:</span>
+<div id="bar" class="games">
+  <span class="games-label">Choose a game — free homebrew</span>
+  <div class="games-row">
   <button data-rom="https://raw.githubusercontent.com/OpenEmu/OpenEmu-Update/master/Homebrew/NES/Blade%20Buster/BladeBuster.nes">Blade Buster</button>
   <button data-rom="https://raw.githubusercontent.com/OpenEmu/OpenEmu-Update/master/Homebrew/NES/Battle%20Kid/BattleKid-Demo.nes">Battle Kid</button>
   <button data-rom="https://raw.githubusercontent.com/OpenEmu/OpenEmu-Update/master/Homebrew/NES/Super%20PakPak/superpakpak.nes">Super PakPak</button>
   <button data-rom="https://raw.githubusercontent.com/OpenEmu/OpenEmu-Update/master/Homebrew/NES/Sir%20Ababol/Sir%20Ababol%20(2013)(The%20Mojon%20Twins)%5B!%5D.nes">Sir Ababol</button>
   <button data-rom="https://raw.githubusercontent.com/OpenEmu/OpenEmu-Update/master/Homebrew/NES/Lawn%20Mower/Lawn_Mower.nes">Lawn Mower</button>
   <button data-rom="https://raw.githubusercontent.com/retrobrews/nes-games/master/madwizard.nes">Mad Wizard</button>
+  </div>
 </div>
 
 <!-- Your own ROMs, served same-origin by serve.ts. Hidden on the public build. -->
@@ -128,6 +153,13 @@
 <div class="keys">
   <b>Arrows</b> D-pad &nbsp;·&nbsp; <b>Z</b> A &nbsp;·&nbsp; <b>X</b> B &nbsp;·&nbsp;
   <b>Enter</b> Start &nbsp;·&nbsp; <b>Shift</b> Select
+</div>
+
+<div class="built">
+  The 6502 CPU, PPU (graphics) and APU (sound) are all written in
+  <a href="https://milo-language.github.io/milo/">Milo</a>. One source set, two outputs:
+  a native binary via LLVM, or the JavaScript running this page via
+  <a href="https://milo-language.github.io/milo/language/javascript-target">emit-js</a>.
 </div>
 
 <!-- Milo-compiled emulator core: defines global createNes / stepFrame / setButtons -->

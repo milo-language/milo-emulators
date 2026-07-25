@@ -36,6 +36,25 @@
   .keys { color: #8b949e; font-size: 12px; text-align: center; }
   .keys b { color: #e6edf3; }
   .sub { color: #8b949e; font-size: 13px; margin-top: -8px; }
+  /* The no-select rule above exists so dragging on the touch pad can't select the
+     UI; prose is not part of that, so let it be selected and copied normally. */
+  h1, .sub, #status, .keys, .built, .games-label { -webkit-user-select: text; user-select: text; }
+  /* Game picker: the primary call to action on the page, so give it more weight
+     than the utility row above it. */
+  .games { flex-direction: column; gap: 10px; }
+  .games-label {
+    color: #8b949e; font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  }
+  .games-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .games-row button {
+    background: #161b22; padding: 9px 18px;
+    transition: background .12s ease, border-color .12s ease, transform .12s ease;
+  }
+  .games-row button:hover { background: #21262d; border-color: #58a6ff; transform: translateY(-1px); }
+  .games-row button:active { transform: translateY(0); }
+  .built { color: #8b949e; font-size: 12px; text-align: center; max-width: 620px; padding: 0 16px; }
+  .built a { color: #58a6ff; text-decoration: none; }
+  .built a:hover { text-decoration: underline; }
   #sysnav { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
   #sysnav a {
     background: #21262d; color: #e6edf3; border: 1px solid #30363d;
@@ -62,6 +81,13 @@
   .mid .tb { width: auto; height: 34px; border-radius: 17px; padding: 0 16px; font-size: 12px; }
   .shoulders { display: flex; justify-content: space-between; width: min(96vw, 640px); padding: 0 10px; }
   .shoulders .tb { width: auto; height: 34px; border-radius: 10px; padding: 0 22px; font-size: 13px; }
+  /* Face buttons in the real SFC/PAL controller's colours: A red, B yellow,
+     X blue, Y green — recognisable at a glance, and the labels match the ROM's. */
+  .face .tb[data-bit="0x0080"] { background: #c9403c; border-color: #e0605c; color: #fff; } /* A */
+  .face .tb[data-bit="0x8000"] { background: #d8b022; border-color: #eccb4e; color: #241d00; } /* B */
+  .face .tb[data-bit="0x0040"] { background: #3a63c8; border-color: #5f85e4; color: #fff; } /* X */
+  .face .tb[data-bit="0x4000"] { background: #2f9e5c; border-color: #4cc07a; color: #fff; } /* Y */
+  .face .tb.pressed { filter: brightness(1.6); }
 </style>
 </head>
 <body>
@@ -88,14 +114,16 @@
 </div>
 
 <!-- One-click free homebrew (fetched from retrobrews' own CORS-open hosting) -->
-<div id="bar">
-  <span style="color:#8b949e">Free homebrew:</span>
-  <button data-rom="https://raw.githubusercontent.com/retrobrews/snes-games/master/questformoney.sfc">UWOL</button>
-  <button data-rom="https://raw.githubusercontent.com/retrobrews/snes-games/master/superbossgaiden.sfc">Super Boss Gaiden</button>
-  <button data-rom="https://raw.githubusercontent.com/retrobrews/snes-games/master/blt.sfc">BLT</button>
-  <button data-rom="https://raw.githubusercontent.com/retrobrews/snes-games/master/bucket.smc">Bucket</button>
-  <button data-rom="https://raw.githubusercontent.com/retrobrews/snes-games/master/megafamilybros.smc">Mega Family Bros</button>
-  <button data-rom="https://raw.githubusercontent.com/retrobrews/snes-games/master/hilda.sfc">Hilda</button>
+<div id="bar" class="games">
+  <span class="games-label">Choose a game — free homebrew</span>
+  <div class="games-row">
+    <button data-rom="https://raw.githubusercontent.com/retrobrews/snes-games/master/questformoney.sfc">UWOL</button>
+    <button data-rom="https://raw.githubusercontent.com/retrobrews/snes-games/master/superbossgaiden.sfc">Super Boss Gaiden</button>
+    <button data-rom="https://raw.githubusercontent.com/retrobrews/snes-games/master/blt.sfc">BLT</button>
+    <button data-rom="https://raw.githubusercontent.com/retrobrews/snes-games/master/bucket.smc">Bucket</button>
+    <button data-rom="https://raw.githubusercontent.com/retrobrews/snes-games/master/megafamilybros.smc">Mega Family Bros</button>
+    <button data-rom="https://raw.githubusercontent.com/retrobrews/snes-games/master/hilda.sfc">Hilda</button>
+  </div>
 </div>
 
 <!-- Your own ROMs, served same-origin by serve.ts. Hidden on the public build. -->
@@ -129,6 +157,13 @@
 <div id="status">Load a SNES ROM to play (drag onto the window, or use Load ROM…).</div>
 <div class="keys">
   <b>Arrows</b> D-pad &nbsp;·&nbsp; <b>Z</b> B &nbsp;·&nbsp; <b>X</b> A &nbsp;·&nbsp; <b>A</b> Y &nbsp;·&nbsp; <b>S</b> X &nbsp;·&nbsp; <b>Q/W</b> L/R &nbsp;·&nbsp; <b>Enter</b> Start &nbsp;·&nbsp; <b>RShift</b> Select
+</div>
+
+<div class="built">
+  The 65816 CPU, SPC700 + S-DSP audio and PPU are all written in
+  <a href="https://milo-language.github.io/milo/">Milo</a>. One source set, two outputs:
+  a native binary via LLVM, or the JavaScript running this page via
+  <a href="https://milo-language.github.io/milo/language/javascript-target">emit-js</a>.
 </div>
 
 <!-- Milo-compiled emulator core: defines global createSnes / advanceFrame / setButtons / frameW / frameH -->

@@ -36,13 +36,13 @@
   .keys { color: #8b949e; font-size: 12px; text-align: center; }
   .keys b { color: #e6edf3; }
   .sub { color: #8b949e; font-size: 13px; margin-top: -8px; }
-  .pitch { max-width: 640px; text-align: center; color: #c9d1d9; font-size: 14px; line-height: 1.7; padding: 0 16px 8px; }
-  .pitch p { margin: 10px 0; }
-  .pitch b { color: #fff; }
-  .pitch .native { color: #7ee787; }
-  .pitch .js { color: #d29922; }
-  .pitch a { color: #58a6ff; text-decoration: none; }
-  .pitch code { background: #161b22; padding: 1px 5px; border-radius: 4px; }
+  #sysnav { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  #sysnav a {
+    background: #21262d; color: #e6edf3; border: 1px solid #30363d;
+    padding: 7px 16px; border-radius: 6px; text-decoration: none;
+  }
+  #sysnav a:hover { background: #30363d; }
+  #sysnav a.on { background: #1f6feb; border-color: #1f6feb; color: #fff; }
 
   /* On-screen touch gamepad — shown on coarse-pointer (touch) devices only. */
   #pad { display: none; width: min(96vw, 640px); justify-content: space-between;
@@ -66,6 +66,14 @@
 </head>
 <body>
 <div id="drop">drop a SNES ROM (<code>.sfc</code> / <code>.smc</code>) to play</div>
+
+<!-- Sibling demos are deployed next to this one, so relative links work both on
+     the Pages build (/emulators/<sys>/) and under serve.ts (/<sys>/). -->
+<nav id="sysnav">
+  <a href="../nes/">NES</a>
+  <a class="on" href="../snes/">SNES</a>
+  <a href="../genesis/">Genesis</a>
+</nav>
 
 <h1>Milo <span>SNES</span></h1>
 <div class="sub">a Super Nintendo, written in Milo — playing in your browser</div>
@@ -121,12 +129,6 @@
 <div id="status">Load a SNES ROM to play (drag onto the window, or use Load ROM…).</div>
 <div class="keys">
   <b>Arrows</b> D-pad &nbsp;·&nbsp; <b>Z</b> B &nbsp;·&nbsp; <b>X</b> A &nbsp;·&nbsp; <b>A</b> Y &nbsp;·&nbsp; <b>S</b> X &nbsp;·&nbsp; <b>Q/W</b> L/R &nbsp;·&nbsp; <b>Enter</b> Start &nbsp;·&nbsp; <b>RShift</b> Select
-</div>
-
-<div class="pitch">
-  <p>This whole Super Nintendo — <b>65816 CPU + SPC700 audio CPU + PPU (graphics)</b> — is one program written in <a href="..">Milo</a>, a memory-safe systems language.</p>
-  <p>From that <b>one source file set</b>, the Milo compiler produces two things: a <b class="native">native binary</b> (via LLVM — a real SDL2 desktop app) and the <b class="js">JavaScript</b> running this page (via <code>emit-js</code>). No second implementation, no wasm, no plugins.</p>
-  <p>And they agree exactly: the frame you're looking at is <b>byte-for-byte identical</b> to what the native binary renders.</p>
 </div>
 
 <!-- Milo-compiled emulator core: defines global createSnes / advanceFrame / setButtons / frameW / frameH -->

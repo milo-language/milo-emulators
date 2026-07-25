@@ -1,14 +1,16 @@
-// Local dev server for the browser emulator demos. Serves the NES demo at /nes/
-// and the Genesis demo at /genesis/, plus (localhost only) the repo's gitignored
-// roms/ folder so each page can one-click your own ROMs. These local endpoints
-// don't exist on the public GitHub Pages build, so copyrighted dumps stay local.
-//   bun examples/emulators/genesis/serve.ts   ->  http://localhost:8017
+// Local dev server for the browser emulator demos. Serves each demo at /<system>/
+// (matching the sibling-relative nav links the pages use), plus (localhost only)
+// the repo's gitignored roms/ folder so each page can one-click your own ROMs.
+// These local endpoints don't exist on the public GitHub Pages build, so
+// copyrighted dumps stay local.
+//   bun genesis/serve.ts   ->  http://localhost:8017
 import { readdirSync, statSync, existsSync } from "fs";
 import { join, extname } from "path";
 
-const REPO = join(import.meta.dir, "..", "..", "..");
-const NES_WEB = join(REPO, "examples", "emulators", "nes", "web");
-const GEN_WEB = join(REPO, "examples", "emulators", "genesis", "web");
+const REPO = join(import.meta.dir, "..");
+const NES_WEB = join(REPO, "nes", "web");
+const GEN_WEB = join(REPO, "genesis", "web");
+const SNES_WEB = join(REPO, "snes", "web");
 const ROMS = existsSync(join(REPO, "roms", "games")) ? join(REPO, "roms", "games") : join(REPO, "roms");
 const PORT = Number(process.env.PORT) || 8017;
 
@@ -34,7 +36,7 @@ display:flex;flex-direction:column;gap:16px;align-items:center;justify-content:c
 a{color:#58a6ff;font-size:20px;text-decoration:none;border:1px solid #30363d;padding:12px 24px;border-radius:8px}
 a:hover{background:#21262d}</style>
 <h1>Milo emulators — compiled to JavaScript</h1>
-<a href="/nes/">🎮 NES</a><a href="/genesis/">🕹️ Genesis</a>`;
+<a href="/nes/">🎮 NES</a><a href="/snes/">🎮 SNES</a><a href="/genesis/">🕹️ Genesis</a>`;
 
 async function serveFrom(root: string, rel: string): Promise<Response> {
   if (rel === "" || rel === "/") rel = "/index.html";
@@ -57,9 +59,10 @@ Bun.serve({
     }
     if (path === "/") return new Response(LANDING, { headers: { "content-type": "text/html" } });
     if (path === "/nes" || path.startsWith("/nes/")) return serveFrom(NES_WEB, path.replace(/^\/nes/, ""));
+    if (path === "/snes" || path.startsWith("/snes/")) return serveFrom(SNES_WEB, path.replace(/^\/snes/, ""));
     if (path === "/genesis" || path.startsWith("/genesis/")) return serveFrom(GEN_WEB, path.replace(/^\/genesis/, ""));
     return new Response("not found", { status: 404 });
   },
 });
 
-console.log(`Milo emulators: http://localhost:${PORT}   (NES /nes/, Genesis /genesis/, local ROMs from ${ROMS})`);
+console.log(`Milo emulators: http://localhost:${PORT}   (/nes/, /snes/, /genesis/, local ROMs from ${ROMS})`);

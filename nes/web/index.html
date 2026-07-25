@@ -39,13 +39,13 @@
   .keys { color: #8b949e; font-size: 12px; text-align: center; }
   .keys b { color: #e6edf3; }
   .sub { color: #8b949e; font-size: 13px; margin-top: -8px; }
-  .pitch { max-width: 640px; text-align: center; color: #c9d1d9; font-size: 14px; line-height: 1.7; padding: 0 16px 8px; }
-  .pitch p { margin: 10px 0; }
-  .pitch b { color: #fff; }
-  .pitch .native { color: #7ee787; }
-  .pitch .js { color: #d29922; }
-  .pitch a { color: #58a6ff; text-decoration: none; }
-  .pitch code { background: #161b22; padding: 1px 5px; border-radius: 4px; }
+  #sysnav { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  #sysnav a {
+    background: #21262d; color: #e6edf3; border: 1px solid #30363d;
+    padding: 7px 16px; border-radius: 6px; text-decoration: none;
+  }
+  #sysnav a:hover { background: #30363d; }
+  #sysnav a.on { background: #1f6feb; border-color: #1f6feb; color: #fff; }
 
   /* On-screen touch gamepad — shown on coarse-pointer (touch) devices only. */
   #pad { display: none; width: min(96vw, 560px); justify-content: space-between;
@@ -68,6 +68,14 @@
 <body>
 <div id="drop">drop a <code>.nes</code> ROM to play</div>
 
+<!-- Sibling demos are deployed next to this one, so relative links work both on
+     the Pages build (/emulators/<sys>/) and under serve.ts (/<sys>/). -->
+<nav id="sysnav">
+  <a class="on" href="../nes/">NES</a>
+  <a href="../snes/">SNES</a>
+  <a href="../genesis/">Genesis</a>
+</nav>
+
 <h1>Milo <span>NES</span></h1>
 <div class="sub">a Nintendo Entertainment System, written in Milo — playing in your browser</div>
 <canvas id="screen" width="256" height="240"></canvas>
@@ -79,7 +87,6 @@
   <button id="hd">✨ HD: off</button>
   <button id="fs">Fullscreen</button>
   <button id="togglePad" title="Show/hide the on-screen gamepad">🎮 Pad</button>
-  <label style="color:#8b949e">🔊<input id="vol" type="range" min="0" max="100" value="25" style="vertical-align:middle;width:80px"></label>
   <span id="fps"></span>
 </div>
 
@@ -121,12 +128,6 @@
 <div class="keys">
   <b>Arrows</b> D-pad &nbsp;·&nbsp; <b>Z</b> A &nbsp;·&nbsp; <b>X</b> B &nbsp;·&nbsp;
   <b>Enter</b> Start &nbsp;·&nbsp; <b>Shift</b> Select
-</div>
-
-<div class="pitch">
-  <p>This whole NES — <b>CPU, PPU (graphics), APU (sound)</b>, all of it — is one program written in <a href="..">Milo</a>, a memory-safe systems language.</p>
-  <p>From that <b>one source file set</b>, the Milo compiler produces two things: a <b class="native">native binary</b> (via LLVM — a real SDL2 desktop app) and the <b class="js">JavaScript</b> running this page (via <code>emit-js</code>). No second implementation, no wasm, no plugins.</p>
-  <p>And they agree exactly: the frame you're looking at is <b>byte-for-byte identical</b> to what the native binary renders.</p>
 </div>
 
 <!-- Milo-compiled emulator core: defines global createNes / stepFrame / setButtons -->
@@ -262,7 +263,7 @@ let audioCtx = null, gainNode = null;
 const ring = new Float32Array(1 << 16);   // power-of-two for cheap & masking
 const RMASK = ring.length - 1;
 let rHead = 0, rTail = 0;
-const volSlider = document.getElementById("vol");
+const VOLUME = 0.3;   // fixed gain (slider removed): audible but not blaring on autoplay
 function initAudio() {
   if (audioCtx) return;
   audioCtx = new AudioContext({ sampleRate: SR });
@@ -274,13 +275,12 @@ function initAudio() {
       else out[i] = 0;   // underrun -> silence
     }
   };
-  // Gain stage so the volume slider can keep autoplay quiet by default.
+  // Gain stage so autoplay stays quiet by default.
   gainNode = audioCtx.createGain();
-  gainNode.gain.value = (+volSlider.value / 100) ** 2;   // perceptual-ish curve
+  gainNode.gain.value = VOLUME;
   node.connect(gainNode);
   gainNode.connect(audioCtx.destination);
 }
-volSlider.addEventListener("input", () => { if (gainNode) gainNode.gain.value = (+volSlider.value / 100) ** 2; });
 // Browsers keep an AudioContext suspended until a user gesture. Video runs on
 // load regardless; the first click/keypress unlocks sound.
 function unlockAudio() {

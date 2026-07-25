@@ -23,6 +23,45 @@ for replies — no SPC700 core, no boot. S-DSP (actual sound output) CAN wait.
 - **Reference emulators** (behavior questions only, don't port): Mesen2
   (best debugger — trace logger + event viewer), bsnes (accuracy reference).
 
+## Backlog (2026-07-24): per-line CGRAM + BG scroll HDMA — diagnosed, not built
+
+Super Boss Gaiden's cutscenes render with black rectangles over characters/walls and
+a garbled band with red dashes across the top scanlines. Not a mystery — it is the
+"remaining HDMA render targets" gap below, hit by a game that leans on it hard.
+
+Repro + evidence (headless, no SDL):
+```
+/tmp/snes/dbg roms/sbg.sfc --frames 2400 --press start@420-430 --press start@600-610 \
+  --press b@800-810 --press start@1000-1010 --press b@1600-1610 --press b@1800-1810 \
+  --press b@2000-2010 --shot 2399
+# ROM: https://raw.githubusercontent.com/retrobrews/snes-games/master/superbossgaiden.sfc
+```
+```
+NMITIMEN=$81 HDMAEN($420C)=$1C
+  HDMA ch2 -> $2121 pattern=3 direct table=$8C99CA   # CGADD/CGDATA, per-scanline palette
+  HDMA ch3 -> $2121 pattern=3 direct table=$8FDDFA   # second palette channel
+  HDMA ch4 -> $2112 pattern=2 direct table=$7EA0A9   # BG3VOFS, per-scanline scroll
+```
+Everything else at that frame is sane (brightness 15, no force-blank, BG bases fine,
+CPU not derailed), so the two dropped targets are the whole defect:
+- **black rectangles** = the two CGRAM channels rewrite palette entries per scanline;
+  we never apply them, so those slots keep whatever the last full-frame DMA left
+  (black).
+- **top-of-screen band** = BG3's vertical scroll is HDMA'd per line; we render the
+  frame with one scroll value, so the top lines fetch the wrong tilemap rows.
+
+Plan, in order:
+1. **Per-line BG scroll.** Mechanically identical to the existing `lineBright` /
+   `lineColdR/G/B` / `lineWH0/1` arrays — add per-line hofs/vofs and read them where
+   `renderScreenBGs` reads the scalar scroll. Contained; fixes the top band.
+2. **Per-line CGRAM.** The harder half: `renderScreenBGs` draws layer-by-layer, not
+   line-by-line, so `cgToRgb` needs a per-line palette view instead of the single
+   `p.cgram`. Either a 224x256 snapshot (~450 KB, refilled per frame) or a sparse
+   touched-index override. Fixes the black rectangles.
+
+No SNES oracle is wired up, so verification is visual against real-hardware footage
+of the same scene (krom HDMA test ROMs cover the mechanism, not this scene).
+
 ## Update (2026-07): SMW plays into levels — HBLANK-wait + HDMA landed
 
 SMW now goes title -> file select -> **into a level rendering in full color** (Yoshi's

@@ -8,12 +8,11 @@
 //   bun run examples/emulators/genesis/harteConv.ts <op.json.gz> /tmp/op.flat
 //   milo run examples/emulators/genesis/runHarte.milo /tmp/op.flat [maxCases]
 
+from "std/fs" import { readFile }
 from "std/args" import {
     args
 }
-from "std/io" import {
-    readFile
-}
+
 from "./m68k" import {
     M68k, Mem, newCpu, newMem, step, SR_S
 }

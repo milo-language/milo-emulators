@@ -1,0 +1,23 @@
+// Headless throughput bench: step the NES CPU core millions of times with no per-step
+// I/O, so the wall-clock is dominated by the emulator's arithmetic + array bounds work.
+// Used to measure the cost of all-mode overflow/bounds traps vs --no-overflow-checks.
+from "./cartridgeFile" import { loadCartridge }
+from "./cpu" import { newBus, newCpuNestest, step, formatState }
+
+fn main(): i32 {
+    let path = "roms/nes-test-roms/other/nestest.nes"
+    match loadCartridge(path) {
+        Result.Ok(cart) => {
+            var bus = newBus(cart)
+            var cpu = newCpuNestest()
+            var i: i64 = 0
+            while i < 20000000 {
+                step(cpu, bus)
+                i = i + 1
+            }
+            print(formatState(cpu))   // keep cpu live; single line of output
+        }
+        Result.Err(e) => { print("load failed: "); print(e); return 1 }
+    }
+    return 0
+}

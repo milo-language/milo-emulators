@@ -1,12 +1,11 @@
 // Milo side of the GSU differential fuzzer. Reads whitespace test vectors (one test
 // per line: steps progLen r0..r15 carry b0..b(progLen-1)) and prints R0-R15 + SFR,
 // matching gsuoracle.cpp so a Python driver can diff Milo's GSU vs Snes9x's.
+from "std/fs" import { readFile }
 from "std/args" import {
     args
 }
-from "std/io" import {
-    readFile
-}
+
 from "std/string" import {
     strSplit
 }
@@ -49,12 +48,12 @@ fn main(): i32 {
             return 1
         }
     }
-    let lines = strSplit(text, "\n")
+    let lines = text.split("\n")
     var li: i64 = 0
     while li < lines.len {
         let line = lines[li]
         li = li + 1
-        let toks = strSplit(line, " ")
+        let toks = line.split(" ")
         if toks.len >= 19 {
             var steps = atoiTok(toks[0])
             var progLen = atoiTok(toks[1])

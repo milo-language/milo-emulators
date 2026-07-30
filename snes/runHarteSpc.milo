@@ -5,12 +5,11 @@
 //   milo run examples/emulators/snes/runHarteSpc.milo /tmp/00.flat [maxCases]
 // Driver: examples/emulators/snes/harteSpc.sh
 
+from "std/fs" import { readFile }
 from "std/args" import {
     args
 }
-from "std/io" import {
-    readFile
-}
+
 from "./spc" import {
     Spc, SpcMem, spcMemNew, spcMemReset, spcRead, spcWrite, spcStep
 }

@@ -24,12 +24,8 @@
 from "std/args" import {
     args
 }
-from "std/fs" import {
-    writeFile, makeDir
-}
-from "std/io" import {
-    readFile
-}
+from "std/fs" import { writeFile, makeDir, readFile }
+
 from "./cpu" import {
     Cpu, Mem, busNew, newCpuReset, stepFrame, step, scratch, lastBadOp, lastBadOpPc
 }

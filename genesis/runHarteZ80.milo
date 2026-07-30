@@ -4,12 +4,11 @@
 //   bun run examples/emulators/genesis/harteConvZ80.ts roms/z80tests/v1/00.json /tmp/z.flat
 //   milo run examples/emulators/genesis/runHarteZ80.milo /tmp/z.flat
 
+from "std/fs" import { readFile }
 from "std/args" import {
     args
 }
-from "std/io" import {
-    readFile
-}
+
 from "./z80" import {
     Z80, newZ80, stepZ80
 }

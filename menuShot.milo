@@ -27,7 +27,7 @@ fn main(): i32 {
     var selIdx: i64 = 0
     let argv = args()
     if argv.len >= 3 {
-        selIdx = strParseInt(argv[2])
+        selIdx = argv[2].parseInt()
     }
     if selIdx < 0 {
         selIdx = 0

@@ -16,12 +16,8 @@ from "../shared/version" import {
 from "./cpu" import {
     Cpu, Mem, busNew, newCpuReset, stepFrame, sramToString, sramFromString
 }
-from "std/io" import {
-    readFile
-}
-from "std/fs" import {
-    writeFile
-}
+
+from "std/fs" import { writeFile, readFile }
 from "./ppu" import {
     renderFrame
 }
@@ -34,9 +30,7 @@ from "./cartridge" import {
 from "./savestate" import {
     saveState, loadState
 }
-from "std/datetime" import {
-    dateTimeLocalNow, dateTimeFormatTime
-}
+from "std/datetime" import { DateTime }
 
 // Dump the current 256x224 framebuffer (0xRRGGBB per pixel) as a binary PPM next to
 // a save-state, so a state can be eyeballed without loading it in the debugger.
@@ -414,7 +408,7 @@ fn main(): i32 {
                 // as the latest (what F7 and the headless dbg load by default).
                 let blob = saveState(cpu, m)
                 let slot = statePath + (saveSeq % 10).toString()
-                let stamp = dateTimeFormatTime(dateTimeLocalNow())
+                let stamp = DateTime.localNow().formatTime()
                 match writeFile(slot, blob.clone()) {
                     Result.Ok(n) => {
                         print("state saved -> " + slot + " (" + stamp + ")")

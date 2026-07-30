@@ -6,12 +6,11 @@
 //   milo run examples/emulators/snes/runHarte.milo /tmp/ea.flat [maxCases]
 // Driver over many opcodes: examples/emulators/snes/harte.sh
 
+from "std/fs" import { readFile }
 from "std/args" import {
     args
 }
-from "std/io" import {
-    readFile
-}
+
 from "./cpu" import {
     Cpu, Mem, memNew, memReset, memRead, memWrite, step
 }

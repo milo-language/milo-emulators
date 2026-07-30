@@ -1,12 +1,8 @@
 // Pure (non-SDL) logic for the retro-console menu: ROM discovery, row layout,
 // and framebuffer rendering. Split out from menu.milo so a headless harness can
 // render the same pixels to a PNG for verification without opening a window.
-from "std/fs" import {
-    readDir, isDir
-}
-from "std/io" import {
-    readFile
-}
+from "std/fs" import { readDir, isDir, readFile }
+
 from "std/string" import {
     strEndsWith
 }
@@ -231,17 +227,17 @@ fn romTitle(path: &string, name: &string, sys: &string): string {
 
 fn hasRomExt(name: &string, sys: &string): bool {
     if sys == "nes" {
-        return strEndsWith(name, ".nes") || strEndsWith(name, ".NES")
+        return name.endsWith(".nes") || name.endsWith(".NES")
     }
     if sys == "genesis" {
-        return strEndsWith(name, ".md") || strEndsWith(name, ".MD")
-        || strEndsWith(name, ".bin") || strEndsWith(name, ".BIN")
-        || strEndsWith(name, ".gen") || strEndsWith(name, ".GEN")
-        || strEndsWith(name, ".smd") || strEndsWith(name, ".SMD")
+        return name.endsWith(".md") || name.endsWith(".MD")
+        || name.endsWith(".bin") || name.endsWith(".BIN")
+        || name.endsWith(".gen") || name.endsWith(".GEN")
+        || name.endsWith(".smd") || name.endsWith(".SMD")
     }
     if sys == "snes" {
-        return strEndsWith(name, ".sfc") || strEndsWith(name, ".SFC")
-        || strEndsWith(name, ".smc") || strEndsWith(name, ".SMC")
+        return name.endsWith(".sfc") || name.endsWith(".SFC")
+        || name.endsWith(".smc") || name.endsWith(".SMC")
     }
     return false
 }

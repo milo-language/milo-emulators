@@ -1282,7 +1282,7 @@ fn execED(cpu: &mut Z80): bool {
         if z == 4 {
             // NEG
             let a = cpu.a
-            cpu.a = (0 - a) & 0xFF
+            cpu.a = (-a) & 0xFF
             setSZYX(cpu, cpu.a)
             setFlag(cpu, FH, (a & 0xF) != 0)
             setFlag(cpu, FPV, a == 0x80)

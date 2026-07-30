@@ -39,7 +39,7 @@ fn strToInt(s: string): i64 {
         }
     }
     if neg {
-        return 0 - n
+        return -n
     }
     return n
 }
@@ -92,7 +92,7 @@ fn main(): i32 {
                 DOWN
             }
             var steps = if selN < 0 {
-                0 - selN
+                -selN
             } else {
                 selN
             }

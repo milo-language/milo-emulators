@@ -2287,7 +2287,7 @@ fn execMisc(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
     if sub == 0x4 && size != 3 {
         let ea = resolveEa(cpu, m, mode, reg, size)
         let v = eaLoad(cpu, m, ea, size)
-        let res = (0 - v) & sizeMask(size)
+        let res = (-v) & sizeMask(size)
         subFlags(cpu, size, 0, v, res, true)
         eaStore(cpu, m, ea, size, res)
         return true

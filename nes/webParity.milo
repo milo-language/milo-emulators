@@ -1,0 +1,42 @@
+// Native side of the browser-core parity check: boot a ROM through the same
+// webcore entry points the JS driver calls and print a framebuffer checksum per
+// frame. tools/webParity.ts runs the emit-js build of webcore.milo the same way
+// and requires identical output — the only thing that catches the JS backend
+// drifting away from native semantics in code nobody reads.
+from "./webcoreApi" import { NesHandle, createNes, stepFrame, setButtons }
+from "std/fs" import { readFile }
+
+pub fn main(): i32 {
+    var raw = ""
+    match readFile("roms/nes-test-roms/other/nestest.nes") {
+        Result.Ok(s) => { raw = s }
+        Result.Err(e) => {
+            print("cannot read rom")
+            return 1
+        }
+    }
+    var rom: Vec<u8> = Vec.new()
+    var b: i64 = 0
+    while b < raw.len {
+        rom.push(raw[b])
+        b = b + 1
+    }
+
+    var h = createNes(rom)
+    var frame: i64 = 0
+    while frame < 30 {
+        setButtons(h, 0 as u8)
+        stepFrame(h)
+        // FNV-1a over the framebuffer. Wrapping on purpose: the hash is defined
+        // modulo 2^32, and a plain `*` would (correctly) trap on overflow.
+        var hash: u32 = 2166136261
+        var i: i64 = 0
+        while i < 61440 {
+            hash = (hash ^ (h.bus.ppu.fb[i] & 0xFF)).wrappingMul(16777619)
+            i = i + 1
+        }
+        print(frame.toString() + " " + hash.toString())
+        frame = frame + 1
+    }
+    return 0
+}

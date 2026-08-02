@@ -3,16 +3,33 @@
 // runtime
 const __out = [];
 function __print(s) { __out.push(String(s)); }
-function __flush() { if (__out.length === 0) return; const text = __out.join(''); __out.length = 0; if (typeof process !== 'undefined') process.stdout.write(text); else if (typeof console !== 'undefined') console.log(text); }
+function __flush() { if (__out.length === 0) return; const text = __out.join(''); __out.length = 0; if (typeof process !== 'undefined') process.stdout.write(__obytes(text)); else if (typeof console !== 'undefined') console.log(__otext(text)); }
+function __eprint(s) { if (typeof process !== 'undefined' && process.stderr) process.stderr.write(__obytes(String(s))); else if (typeof console !== 'undefined') console.error(__otext(String(s))); }
 function __assert(cond, msg) { if (!cond) throw new Error('assertion failed: ' + msg); }
-function __fmtG(x) { if (!isFinite(x)) return String(x); if (x === 0) return '0'; let s = x.toPrecision(6); if (s.indexOf('e') >= 0) { s = Number(s).toExponential(); return s.replace(/e([+-])(\d)$/, 'e$10$2'); } if (s.indexOf('.') >= 0) s = s.replace(/0+$/, '').replace(/\.$/, ''); return s; }
+function __trap(m) { const e = new Error('milo: ' + m); e.__milo_trap = true; throw e; }
+function __ovf(v, lo, hi) { if (!(v >= lo && v <= hi)) __trap('runtime error: integer overflow'); return v; }
+function __idiv(a, b) { if (b === 0) __trap('division by zero'); return Math.trunc(a / b); }
+function __irem(a, b) { if (b === 0) __trap('division by zero'); return a % b; }
+function __idx(a, i) { if (!(i >= 0 && i < a.length)) __trap('array index out of bounds: ' + i + '/' + a.length); return a[i]; }
+function __idxSet(a, i, v) { if (!(i >= 0 && i < a.length)) __trap('array index out of bounds: ' + i + '/' + a.length); a[i] = v; return v; }
+function __sh(s, bits) { if (!(s >= 0 && s < bits)) __trap('shift amount out of range (>= ' + bits + ')'); return s; }
+function __unwrap(o) { if (o.tag !== 0) __trap('unwrap called on ' + (o.data === undefined ? 'None' : 'Err')); return o.data[0]; }
+function __obytes(s) { const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i) & 0xFF; return u; }
+function __otext(s) { return typeof TextDecoder !== 'undefined' ? new TextDecoder().decode(__obytes(s)) : s; }
+function __sbyte(s, i) { if (!(i >= 0 && i < s.length)) __trap('string index out of bounds: ' + i + '/' + s.length); return s.charCodeAt(i); }
+function __gfmt(x, p) { if (x === 0) return Object.is(x, -0) ? '-0' : '0'; const es = x.toExponential(p - 1); const ei = es.indexOf('e'); const e = Number(es.slice(ei + 1)); if (e < -4 || e >= p) { let m = es.slice(0, ei); if (m.indexOf('.') >= 0) m = m.replace(/0+$/, '').replace(/\.$/, ''); let ea = String(Math.abs(e)); if (ea.length < 2) ea = '0' + ea; return m + 'e' + (e < 0 ? '-' : '+') + ea; } let s = x.toFixed(Math.max(0, p - 1 - e)); if (s.indexOf('.') >= 0) s = s.replace(/0+$/, '').replace(/\.$/, ''); return s; }
+function __fmtG(x) { if (Number.isNaN(x)) return 'nan'; if (!isFinite(x)) return x > 0 ? 'inf' : '-inf'; let dig = 1, pow = 10; const av = Math.abs(x); while (dig < 17 && av >= pow) { dig++; pow *= 10; } for (let p = dig; p < 17; p++) { const s = __gfmt(x, p); if (Number(s) === x) return s; } return __gfmt(x, 17); }
 function __propagate(r) { if (r.tag !== 0) throw { __milo_prop: r }; return r.data[0]; }
-function __eprint(s) { if (typeof process !== 'undefined' && process.stderr) process.stderr.write(s); else if (typeof console !== 'undefined') console.error(s); }
 function __displayVal(v) { if (typeof v === 'string') return JSON.stringify(v); if (typeof v === 'boolean') return String(v); if (typeof v === 'number') return Number.isInteger(v) ? String(v) : __fmtG(v); if (v && typeof v === 'object' && v.constructor && v.constructor.name !== 'Object') return __displayStruct(v); return String(v); }
 function __displayStruct(v) { const ks = Object.keys(v); return v.constructor.name + ' { ' + ks.map(k => k + ': ' + __displayVal(v[k])).join(', ') + ' }'; }
 function __displayEnum(v, name) { const e = __enumMeta[name][v.tag]; return e[1] === 0 ? e[0] : e[0] + '(' + v.data.map(__displayVal).join(', ') + ')'; }
-function __clone(v) { if (v === null || typeof v !== 'object') return v; if (Array.isArray(v)) return v.map(__clone); const o = Object.create(Object.getPrototypeOf(v)); for (const k of Object.keys(v)) o[k] = __clone(v[k]); return o; }
-function __eq(a, b) { if (a === b) return true; if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return a === b; if (Array.isArray(a)) return Array.isArray(b) && a.length === b.length && a.every((v, i) => __eq(v, b[i])); const ka = Object.keys(a), kb = Object.keys(b); return ka.length === kb.length && ka.every(k => __eq(a[k], b[k])); }
+function __clone(v) { if (v === null || typeof v !== 'object') return v; if (Array.isArray(v)) return v.map(__clone); if (v instanceof Map) return new Map(Array.from(v, ([k, x]) => [k, __clone(x)])); const o = Object.create(Object.getPrototypeOf(v)); for (const k of Object.keys(v)) o[k] = __clone(v[k]); return o; }
+function __eq(a, b) { if (a === b) return true; if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return a === b; if (Array.isArray(a)) return Array.isArray(b) && a.length === b.length && a.every((v, i) => __eq(v, b[i])); if (a instanceof Map || b instanceof Map) { if (!(a instanceof Map && b instanceof Map) || a.size !== b.size) return false; for (const [k, v] of a) { if (!b.has(k) || !__eq(v, b.get(k))) return false; } return true; } const ka = Object.keys(a), kb = Object.keys(b); return ka.length === kb.length && ka.every(k => __eq(a[k], b[k])); }
+
+class Unit {
+  constructor() {
+  }
+}
 
 class GenHandle {
   constructor(cpu, m, synth, rgba, samples) {
@@ -194,72 +211,155 @@ function strIndexOf(haystack, needle) {
 }
 
 function strIndexOfFrom(haystack, needle, pos) {
-  let notFound = 0;
-  notFound = Math.trunc((notFound - 1));
   if ((needle.length == 0)) {
     return pos;
   }
   if ((pos < Math.trunc(0))) {
-    return notFound;
+    return __ovf((-1), -9223372036854775808, 9223372036854775807);
   }
-  if ((Math.trunc((pos + needle.length)) > haystack.length)) {
-    return notFound;
+  if ((__ovf((pos + needle.length), -9223372036854775808, 9223372036854775807) > haystack.length)) {
+    return __ovf((-1), -9223372036854775808, 9223372036854775807);
   }
   const base = Math.trunc(haystack);
   const nptr = needle;
-  const c0 = (needle.charCodeAt(0) | 0);
-  const last = Math.trunc((haystack.length - needle.length));
+  const c0 = (__sbyte(needle, 0) | 0);
+  const last = __ovf((haystack.length - needle.length), -9223372036854775808, 9223372036854775807);
   let i = pos;
   while ((i <= last)) {
     let hit = 0;
-    const p = memchr(Math.trunc((base + i)), c0, Math.trunc((Math.trunc((last - i)) + 1)));
+    const p = memchr(__ovf((base + i), -9223372036854775808, 9223372036854775807), c0, __ovf((__ovf((last - i), -9223372036854775808, 9223372036854775807) + 1), -9223372036854775808, 9223372036854775807));
     hit = Math.trunc(p);
     if ((hit == 0)) {
-      return notFound;
+      return __ovf((-1), -9223372036854775808, 9223372036854775807);
     }
-    i = Math.trunc((hit - base));
+    i = __ovf((hit - base), -9223372036854775808, 9223372036854775807);
     let cmp = 0;
-    cmp = memcmp(Math.trunc((base + i)), nptr, needle.length);
+    cmp = memcmp(__ovf((base + i), -9223372036854775808, 9223372036854775807), nptr, needle.length);
     if ((cmp == 0)) {
       return i;
     }
-    i = Math.trunc((i + 1));
+    i = __ovf((i + 1), -9223372036854775808, 9223372036854775807);
   }
-  return notFound;
+  return __ovf((-1), -9223372036854775808, 9223372036854775807);
+}
+
+function strIndexOfFromIgnoreCase(haystack, needle, pos) {
+  if ((needle.length == 0)) {
+    return pos;
+  }
+  if ((__ovf((pos + needle.length), -9223372036854775808, 9223372036854775807) > haystack.length)) {
+    return __ovf((-1), -9223372036854775808, 9223372036854775807);
+  }
+  const base = Math.trunc(haystack);
+  const last = __ovf((haystack.length - needle.length), -9223372036854775808, 9223372036854775807);
+  let anchor = 0;
+  let k = 0;
+  while ((k < needle.length)) {
+    if ((!asciiIsAlpha(__sbyte(needle, k)))) {
+      anchor = k;
+      break;
+    }
+    k = __ovf((k + 1), -9223372036854775808, 9223372036854775807);
+  }
+  const ab = __sbyte(needle, anchor);
+  const c1 = (asciiToLower(ab) | 0);
+  let c2 = c1;
+  if (asciiIsAlpha(ab)) {
+    c2 = (asciiToUpper(ab) | 0);
+  }
+  let h1 = __ovf((-1), -9223372036854775808, 9223372036854775807);
+  let h2 = __ovf((-1), -9223372036854775808, 9223372036854775807);
+  if ((c2 == c1)) {
+    h2 = __ovf((-2), -9223372036854775808, 9223372036854775807);
+  }
+  let s = pos;
+  while ((s <= last)) {
+    if ((h1 == __ovf((-1), -9223372036854775808, 9223372036854775807))) {
+      let p = 0;
+      p = Math.trunc(memchr(__ovf((__ovf((base + s), -9223372036854775808, 9223372036854775807) + anchor), -9223372036854775808, 9223372036854775807), c1, __ovf((__ovf((last - s), -9223372036854775808, 9223372036854775807) + 1), -9223372036854775808, 9223372036854775807)));
+      if ((p == 0)) {
+        h1 = __ovf((-2), -9223372036854775808, 9223372036854775807);
+      } else {
+        h1 = __ovf((p - base), -9223372036854775808, 9223372036854775807);
+      }
+    }
+    if ((h2 == __ovf((-1), -9223372036854775808, 9223372036854775807))) {
+      let p = 0;
+      p = Math.trunc(memchr(__ovf((__ovf((base + s), -9223372036854775808, 9223372036854775807) + anchor), -9223372036854775808, 9223372036854775807), c2, __ovf((__ovf((last - s), -9223372036854775808, 9223372036854775807) + 1), -9223372036854775808, 9223372036854775807)));
+      if ((p == 0)) {
+        h2 = __ovf((-2), -9223372036854775808, 9223372036854775807);
+      } else {
+        h2 = __ovf((p - base), -9223372036854775808, 9223372036854775807);
+      }
+    }
+    let h = __ovf((-2), -9223372036854775808, 9223372036854775807);
+    if ((h1 >= 0)) {
+      h = h1;
+    }
+    if (((h2 >= 0) && ((h < 0) || (h2 < h)))) {
+      h = h2;
+    }
+    if ((h < 0)) {
+      return __ovf((-1), -9223372036854775808, 9223372036854775807);
+    }
+    const start = __ovf((h - anchor), -9223372036854775808, 9223372036854775807);
+    let j = 0;
+    while ((j < needle.length)) {
+      if ((asciiToLower(__sbyte(haystack, __ovf((start + j), -9223372036854775808, 9223372036854775807))) != asciiToLower(__sbyte(needle, j)))) {
+        break;
+      }
+      j = __ovf((j + 1), -9223372036854775808, 9223372036854775807);
+    }
+    if ((j == needle.length)) {
+      return start;
+    }
+    if ((h1 == h)) {
+      h1 = __ovf((-1), -9223372036854775808, 9223372036854775807);
+    }
+    if ((h2 == h)) {
+      h2 = __ovf((-1), -9223372036854775808, 9223372036854775807);
+    }
+    s = __ovf((start + 1), -9223372036854775808, 9223372036854775807);
+  }
+  return __ovf((-1), -9223372036854775808, 9223372036854775807);
+}
+
+function strContainsIgnoreCase(haystack, needle) {
+  return (strIndexOfFromIgnoreCase(haystack, needle, 0) >= 0);
 }
 
 function strLastIndexOf(haystack, needle) {
-  let notFound = 0;
-  notFound = Math.trunc((notFound - 1));
   if ((needle.length == 0)) {
     return haystack.length;
   }
   if ((needle.length > haystack.length)) {
-    return notFound;
+    return __ovf((-1), -9223372036854775808, 9223372036854775807);
   }
-  let i = Math.trunc((haystack.length - needle.length));
+  let i = __ovf((haystack.length - needle.length), -9223372036854775808, 9223372036854775807);
   while ((i >= Math.trunc(0))) {
     let j = 0;
     while ((j < needle.length)) {
-      if ((haystack.charCodeAt(Math.trunc((i + j))) != needle.charCodeAt(j))) {
+      if ((__sbyte(haystack, __ovf((i + j), -9223372036854775808, 9223372036854775807)) != __sbyte(needle, j))) {
         break;
       }
-      j = Math.trunc((j + 1));
+      j = __ovf((j + 1), -9223372036854775808, 9223372036854775807);
     }
     if ((j == needle.length)) {
       return i;
     }
-    i = Math.trunc((i - 1));
+    i = __ovf((i - 1), -9223372036854775808, 9223372036854775807);
   }
-  return notFound;
+  return __ovf((-1), -9223372036854775808, 9223372036854775807);
 }
 
 function strStartsWith(s, prefix) {
   if ((prefix.length > s.length)) {
     return false;
   }
-  for (let i = 0; i < prefix.length; i++) {
-    if ((s.charCodeAt(i) != prefix.charCodeAt(i))) {
+  const _t0 = 0;
+  const _t1 = prefix.length;
+  for (let i = _t0; i < _t1; i++) {
+    if ((__sbyte(s, i) != __sbyte(prefix, i))) {
       return false;
     }
   }
@@ -270,9 +370,11 @@ function strEndsWith(s, suffix) {
   if ((suffix.length > s.length)) {
     return false;
   }
-  const offset = Math.trunc((s.length - suffix.length));
-  for (let i = 0; i < suffix.length; i++) {
-    if ((s.charCodeAt(Math.trunc((offset + i))) != suffix.charCodeAt(i))) {
+  const offset = __ovf((s.length - suffix.length), -9223372036854775808, 9223372036854775807);
+  const _t2 = 0;
+  const _t3 = suffix.length;
+  for (let i = _t2; i < _t3; i++) {
+    if ((__sbyte(s, __ovf((offset + i), -9223372036854775808, 9223372036854775807)) != __sbyte(suffix, i))) {
       return false;
     }
   }
@@ -281,10 +383,12 @@ function strEndsWith(s, suffix) {
 
 function strToLower(s) {
   let result = "";
-  for (let i = 0; i < s.length; i++) {
-    const ch = s.charCodeAt(i);
+  const _t4 = 0;
+  const _t5 = s.length;
+  for (let i = _t4; i < _t5; i++) {
+    const ch = __sbyte(s, i);
     if (((ch >= 65) && (ch <= 90))) {
-      (result += String.fromCharCode(((ch + 32) & 0xFF)));
+      (result += String.fromCharCode(__ovf((ch + 32), 0, 255)));
     } else {
       (result += String.fromCharCode(ch));
     }
@@ -294,10 +398,12 @@ function strToLower(s) {
 
 function strToUpper(s) {
   let result = "";
-  for (let i = 0; i < s.length; i++) {
-    const ch = s.charCodeAt(i);
+  const _t6 = 0;
+  const _t7 = s.length;
+  for (let i = _t6; i < _t7; i++) {
+    const ch = __sbyte(s, i);
     if (((ch >= 97) && (ch <= 122))) {
-      (result += String.fromCharCode(((ch - 32) & 0xFF)));
+      (result += String.fromCharCode(__ovf((ch - 32), 0, 255)));
     } else {
       (result += String.fromCharCode(ch));
     }
@@ -308,19 +414,19 @@ function strToUpper(s) {
 function strTrim(s) {
   let start = 0;
   while ((start < s.length)) {
-    const ch = s.charCodeAt(start);
+    const ch = __sbyte(s, start);
     if (((((ch != 32) && (ch != 9)) && (ch != 10)) && (ch != 13))) {
       break;
     }
-    start = Math.trunc((start + 1));
+    start = __ovf((start + 1), -9223372036854775808, 9223372036854775807);
   }
   let end = s.length;
   while ((end > start)) {
-    const ch = s.charCodeAt(Math.trunc((end - 1)));
+    const ch = __sbyte(s, __ovf((end - 1), -9223372036854775808, 9223372036854775807));
     if (((((ch != 32) && (ch != 9)) && (ch != 10)) && (ch != 13))) {
       break;
     }
-    end = Math.trunc((end - 1));
+    end = __ovf((end - 1), -9223372036854775808, 9223372036854775807);
   }
   if ((start >= end)) {
     return "";
@@ -331,11 +437,11 @@ function strTrim(s) {
 function strTrimStart(s) {
   let start = 0;
   while ((start < s.length)) {
-    const ch = s.charCodeAt(start);
+    const ch = __sbyte(s, start);
     if (((((ch != 32) && (ch != 9)) && (ch != 10)) && (ch != 13))) {
       break;
     }
-    start = Math.trunc((start + 1));
+    start = __ovf((start + 1), -9223372036854775808, 9223372036854775807);
   }
   if ((start >= s.length)) {
     return "";
@@ -346,11 +452,11 @@ function strTrimStart(s) {
 function strTrimEnd(s) {
   let end = s.length;
   while ((end > Math.trunc(0))) {
-    const ch = s.charCodeAt(Math.trunc((end - 1)));
+    const ch = __sbyte(s, __ovf((end - 1), -9223372036854775808, 9223372036854775807));
     if (((((ch != 32) && (ch != 9)) && (ch != 10)) && (ch != 13))) {
       break;
     }
-    end = Math.trunc((end - 1));
+    end = __ovf((end - 1), -9223372036854775808, 9223372036854775807);
   }
   if ((end <= Math.trunc(0))) {
     return "";
@@ -360,30 +466,33 @@ function strTrimEnd(s) {
 
 function strSplit(s, sep) {
   let result = [];
-  let notFound = 0;
-  notFound = Math.trunc((notFound - 1));
   if ((sep.length == 0)) {
-    for (let i = 0; i < s.length; i++) {
-      result.push(s.slice(i, Math.trunc((i + 1))));
+    const _t8 = 0;
+    const _t9 = s.length;
+    for (let i = _t8; i < _t9; i++) {
+      result.push(s.slice(i, __ovf((i + 1), -9223372036854775808, 9223372036854775807)));
     }
     return result;
   }
   let pos = 0;
   while ((pos <= s.length)) {
-    const idx = strIndexOfFrom(s, sep, pos);
-    if ((idx == notFound)) {
+    const found = strIndexOfFrom(s, sep, pos);
+    if ((found < 0)) {
       result.push(s.slice(pos, s.length));
       break;
     }
+    const idx = found;
     result.push(s.slice(pos, idx));
-    pos = Math.trunc((idx + sep.length));
+    pos = __ovf((idx + sep.length), -9223372036854775808, 9223372036854775807);
   }
   return result;
 }
 
 function strRepeat(s, n) {
   let result = "";
-  for (let i = 0; i < n; i++) {
+  const _t10 = 0;
+  const _t11 = n;
+  for (let i = _t10; i < _t11; i++) {
     result = (result + s);
   }
   return result;
@@ -394,12 +503,12 @@ function strPadStart(s, targetLen, padStr) {
     return s;
   }
   let padding = "";
-  let needed = Math.trunc((targetLen - s.length));
+  let needed = __ovf((targetLen - s.length), -9223372036854775808, 9223372036854775807);
   while ((padding.length < needed)) {
     let i = 0;
     while (((i < padStr.length) && (padding.length < needed))) {
-      (padding += String.fromCharCode(padStr.charCodeAt(i)));
-      i = Math.trunc((i + 1));
+      (padding += String.fromCharCode(__sbyte(padStr, i)));
+      i = __ovf((i + 1), -9223372036854775808, 9223372036854775807);
     }
   }
   return (padding + s);
@@ -410,14 +519,14 @@ function strPadEnd(s, targetLen, padStr) {
     return s;
   }
   let result = s;
-  let needed = Math.trunc((targetLen - s.length));
+  let needed = __ovf((targetLen - s.length), -9223372036854775808, 9223372036854775807);
   let added = 0;
   while ((added < needed)) {
     let i = 0;
     while (((i < padStr.length) && (added < needed))) {
-      (result += String.fromCharCode(padStr.charCodeAt(i)));
-      i = Math.trunc((i + 1));
-      added = Math.trunc((added + 1));
+      (result += String.fromCharCode(__sbyte(padStr, i)));
+      i = __ovf((i + 1), -9223372036854775808, 9223372036854775807);
+      added = __ovf((added + 1), -9223372036854775808, 9223372036854775807);
     }
   }
   return result;
@@ -427,49 +536,88 @@ function strReplace(s, old, newVal) {
   if ((old.length == 0)) {
     return s;
   }
-  let notFound = 0;
-  notFound = Math.trunc((notFound - 1));
   let result = "";
   let pos = 0;
   while ((pos < s.length)) {
-    const idx = strIndexOfFrom(s, old, pos);
-    if ((idx == notFound)) {
+    const found = strIndexOfFrom(s, old, pos);
+    if ((found < 0)) {
       result = (result + s.slice(pos, s.length));
       break;
     }
+    const idx = found;
     if ((idx > pos)) {
       result = (result + s.slice(pos, idx));
     }
     result = (result + newVal);
-    pos = Math.trunc((idx + old.length));
+    pos = __ovf((idx + old.length), -9223372036854775808, 9223372036854775807);
   }
   return result;
 }
 
-function charIsWhitespace(ch) {
+function asciiIsWhitespace(ch) {
   return ((((ch == 32) || (ch == 9)) || (ch == 10)) || (ch == 13));
 }
 
-function charIsDigit(ch) {
+function asciiIsDigit(ch) {
   return ((ch >= 48) && (ch <= 57));
 }
 
-function charIsAlpha(ch) {
+function asciiIsAlpha(ch) {
   return (((ch >= 65) && (ch <= 90)) || ((ch >= 97) && (ch <= 122)));
 }
 
-function charIsAlphanumeric(ch) {
-  return (charIsAlpha(ch) || charIsDigit(ch));
+function asciiIsAlphanumeric(ch) {
+  return (asciiIsAlpha(ch) || asciiIsDigit(ch));
+}
+
+function asciiIsLower(ch) {
+  return ((ch >= 97) && (ch <= 122));
+}
+
+function asciiIsUpper(ch) {
+  return ((ch >= 65) && (ch <= 90));
+}
+
+function asciiIsPunctuation(ch) {
+  return (((((ch >= 33) && (ch <= 47)) || ((ch >= 58) && (ch <= 64))) || ((ch >= 91) && (ch <= 96))) || ((ch >= 123) && (ch <= 126)));
+}
+
+function asciiIsHexDigit(ch) {
+  return ((asciiIsDigit(ch) || ((ch >= 97) && (ch <= 102))) || ((ch >= 65) && (ch <= 70)));
+}
+
+function asciiIsPrintable(ch) {
+  return ((ch >= 32) && (ch < 127));
+}
+
+function asciiIsControl(ch) {
+  return ((ch < 32) || (ch == 127));
+}
+
+function asciiToLower(ch) {
+  if (asciiIsUpper(ch)) {
+    return __ovf((ch + 32), 0, 255);
+  }
+  return ch;
+}
+
+function asciiToUpper(ch) {
+  if (asciiIsLower(ch)) {
+    return __ovf((ch - 32), 0, 255);
+  }
+  return ch;
 }
 
 function strSplitWords(s) {
   let result = [];
   let word = "";
-  for (let i = 0; i < s.length; i++) {
-    const ch = s.charCodeAt(i);
-    if (charIsAlpha(ch)) {
+  const _t12 = 0;
+  const _t13 = s.length;
+  for (let i = _t12; i < _t13; i++) {
+    const ch = __sbyte(s, i);
+    if (asciiIsAlpha(ch)) {
       if (((ch >= 65) && (ch <= 90))) {
-        (word += String.fromCharCode(((ch + 32) & 0xFF)));
+        (word += String.fromCharCode(__ovf((ch + 32), 0, 255)));
       } else {
         (word += String.fromCharCode(ch));
       }
@@ -489,9 +637,11 @@ function strSplitWords(s) {
 function strSplitWhitespace(s) {
   let result = [];
   let token = "";
-  for (let i = 0; i < s.length; i++) {
-    const ch = s.charCodeAt(i);
-    if (charIsWhitespace(ch)) {
+  const _t14 = 0;
+  const _t15 = s.length;
+  for (let i = _t14; i < _t15; i++) {
+    const ch = __sbyte(s, i);
+    if (asciiIsWhitespace(ch)) {
       if ((token.length > 0)) {
         result.push(token);
         token = "";
@@ -506,33 +656,15 @@ function strSplitWhitespace(s) {
   return result;
 }
 
-function trim(s) {
-  let start = 0;
-  while ((start < s.length)) {
-    const ch = s.charCodeAt(start);
-    if (((((ch != 32) && (ch != 9)) && (ch != 10)) && (ch != 13))) {
-      break;
-    }
-    start = Math.trunc((start + 1));
-  }
-  let end = s.length;
-  while ((end > start)) {
-    const ch = s.charCodeAt(Math.trunc((end - 1)));
-    if (((((ch != 32) && (ch != 9)) && (ch != 10)) && (ch != 13))) {
-      break;
-    }
-    end = Math.trunc((end - 1));
-  }
-  return s.slice(start, end);
-}
-
 function vecJoin(parts, sep) {
   let result = "";
-  for (let i = 0; i < parts.length; i++) {
+  const _t16 = 0;
+  const _t17 = parts.length;
+  for (let i = _t16; i < _t17; i++) {
     if ((i > 0)) {
       result = (result + sep);
     }
-    result = (result + parts[i]);
+    result = (result + __idx(parts, i));
   }
   return result;
 }
@@ -542,21 +674,21 @@ function strIsEmpty(s) {
 }
 
 function strCharAt(s, idx) {
-  return s.slice(idx, Math.trunc((idx + 1)));
+  return s.slice(idx, __ovf((idx + 1), -9223372036854775808, 9223372036854775807));
 }
 
 function strReverse(s) {
   let result = "";
   let i = s.length;
   while ((i > 0)) {
-    let start = Math.trunc((i - 1));
-    while (((start > 0) && (((s.charCodeAt(start) & 192) & 0xFF) == 128))) {
-      start = Math.trunc((start - 1));
+    let start = __ovf((i - 1), -9223372036854775808, 9223372036854775807);
+    while (((start > 0) && (((__sbyte(s, start) & 192) & 0xFF) == 128))) {
+      start = __ovf((start - 1), -9223372036854775808, 9223372036854775807);
     }
     let j = start;
     while ((j < i)) {
-      (result += String.fromCharCode(s.charCodeAt(j)));
-      j = Math.trunc((j + 1));
+      (result += String.fromCharCode(__sbyte(s, j)));
+      j = __ovf((j + 1), -9223372036854775808, 9223372036854775807);
     }
     i = start;
   }
@@ -567,70 +699,69 @@ function strParseInt(s) {
   let result = 0;
   let i = 0;
   let negative = false;
-  if (((s.length > 0) && (s.charCodeAt(0) == 45))) {
+  if (((s.length > 0) && (__sbyte(s, 0) == 45))) {
     negative = true;
     i = 1;
   }
   while ((i < s.length)) {
-    const ch = s.charCodeAt(i);
+    const ch = __sbyte(s, i);
     if (((ch < 48) || (ch > 57))) {
       break;
     }
-    const digit = Math.trunc(((ch - 48) & 0xFF));
-    result = Math.trunc((Math.trunc((result * 10)) + digit));
-    i = Math.trunc((i + 1));
+    const digit = Math.trunc(__ovf((ch - 48), 0, 255));
+    result = __ovf((__ovf((result * 10), -9223372036854775808, 9223372036854775807) + digit), -9223372036854775808, 9223372036854775807);
+    i = __ovf((i + 1), -9223372036854775808, 9223372036854775807);
   }
   if (negative) {
-    return Math.trunc((0 - result));
+    return __ovf((0 - result), -9223372036854775808, 9223372036854775807);
   }
   return result;
 }
 
 function strReplaceFirst(s, old, newVal) {
-  const idx = strIndexOf(s, old);
-  let notFound = 0;
-  notFound = Math.trunc((notFound - 1));
-  if ((idx == notFound)) {
+  const found = strIndexOf(s, old);
+  if ((found < 0)) {
     return s;
   }
-  return ((s.slice(0, idx) + newVal) + s.slice(Math.trunc((idx + old.length)), s.length));
+  const idx = found;
+  return ((s.slice(0, idx) + newVal) + s.slice(__ovf((idx + old.length), -9223372036854775808, 9223372036854775807), s.length));
 }
 
 function loadRom(m, cart) {
   let i = 0;
   while (((i < cart.rom.length) && (i < 4194304))) {
-    m.ram[i] = cart.rom[i];
-    m.z80.rom.push(cart.rom[i]);
-    i = Math.trunc((i + 1));
+    __idxSet(m.ram, i, __idx(cart.rom, i));
+    m.z80.rom.push(__idx(cart.rom, i));
+    i = __ovf((i + 1), -9223372036854775808, 9223372036854775807);
   }
 }
 
 function createGenesis(rom) {
   let cart = new Cart([], "", 0);
-  const _t0 = parseCart(rom);
-  if (_t0.tag === 0) {
-    const c = _t0.data[0];
+  const _t18 = parseCart(rom);
+  if (_t18.tag === 0) {
+    const c = _t18.data[0];
     cart = c;
-  } else if (_t0.tag === 1) {
-    const e = _t0.data[0];
+  } else if (_t18.tag === 1) {
+    const e = _t18.data[0];
     __print(("Genesis ROM parse failed: " + e) + "\n");
   }
   let m = newMem();
   m.genesis = true;
   m.z80.gen = true;
   loadRom(m, cart);
-  const sp = ((((((((Math.trunc(m.ram[0]) << 24) >>> 0) | ((Math.trunc(m.ram[1]) << 16) >>> 0)) >>> 0) | ((Math.trunc(m.ram[2]) << 8) >>> 0)) >>> 0) | Math.trunc(m.ram[3])) >>> 0);
-  const pc = ((((((((Math.trunc(m.ram[4]) << 24) >>> 0) | ((Math.trunc(m.ram[5]) << 16) >>> 0)) >>> 0) | ((Math.trunc(m.ram[6]) << 8) >>> 0)) >>> 0) | Math.trunc(m.ram[7])) >>> 0);
+  const sp = ((((((Math.trunc(Math.trunc(__idx(m.ram, 0)) * 2 ** (__sh(24, 64))) | Math.trunc(Math.trunc(__idx(m.ram, 1)) * 2 ** (__sh(16, 64)))) >>> 0) | Math.trunc(Math.trunc(__idx(m.ram, 2)) * 2 ** (__sh(8, 64)))) >>> 0) | Math.trunc(__idx(m.ram, 3))) >>> 0);
+  const pc = ((((((Math.trunc(Math.trunc(__idx(m.ram, 4)) * 2 ** (__sh(24, 64))) | Math.trunc(Math.trunc(__idx(m.ram, 5)) * 2 ** (__sh(16, 64)))) >>> 0) | Math.trunc(Math.trunc(__idx(m.ram, 6)) * 2 ** (__sh(8, 64)))) >>> 0) | Math.trunc(__idx(m.ram, 7))) >>> 0);
   let cpu = newCpu();
-  cpu.a[7] = ((sp & 4294967295) >>> 0);
+  __idxSet(cpu.a, 7, ((sp & 4294967295) >>> 0));
   cpu.pc = ((pc & 4294967295) >>> 0);
   cpu.sr = 9984;
   const h = frameHeight(m);
   let rgba = [];
   let t = 0;
-  while ((t < Math.trunc((Math.trunc((MAXW * h)) * 4)))) {
+  while ((t < __ovf((__ovf((MAXW * h), -9223372036854775808, 9223372036854775807) * 4), -9223372036854775808, 9223372036854775807))) {
     rgba.push(0);
-    t = Math.trunc((t + 1));
+    t = __ovf((t + 1), -9223372036854775808, 9223372036854775807);
   }
   let samples = [];
   return new GenHandle(cpu, m, newSynth(), rgba, samples);
@@ -642,20 +773,20 @@ function setButtons(h, p) {
 
 function runFrame(cpu, m) {
   let line = 0;
-  let hIntCounter = m.vdpRegs[10];
+  let hIntCounter = __idx(m.vdpRegs, 10);
   while ((line < 262)) {
     m.vdpLine = line;
     if ((line < 224)) {
       if ((hIntCounter == 0)) {
-        hIntCounter = m.vdpRegs[10];
-        if ((((m.vdpRegs[0] & 16) >>> 0) != 0)) {
+        hIntCounter = __idx(m.vdpRegs, 10);
+        if ((((__idx(m.vdpRegs, 0) & 16) >>> 0) != 0)) {
           deliverInterrupt(cpu, m, 4);
         }
       } else {
-        hIntCounter = Math.trunc((hIntCounter - 1));
+        hIntCounter = __ovf((hIntCounter - 1), -9223372036854775808, 9223372036854775807);
       }
     } else {
-      hIntCounter = m.vdpRegs[10];
+      hIntCounter = __idx(m.vdpRegs, 10);
     }
     let k = 0;
     while ((k < 130)) {
@@ -665,17 +796,17 @@ function runFrame(cpu, m) {
       if ((z80Running(m) && (((k & 1) >>> 0) == 0))) {
         stepZ80(m.z80);
       }
-      k = Math.trunc((k + 1));
+      k = __ovf((k + 1), -9223372036854775808, 9223372036854775807);
     }
     if ((line == 224)) {
-      if ((((m.vdpRegs[1] & 32) >>> 0) != 0)) {
+      if ((((__idx(m.vdpRegs, 1) & 32) >>> 0) != 0)) {
         deliverInterrupt(cpu, m, 6);
       }
       if (z80Running(m)) {
         z80Interrupt(m.z80);
       }
     }
-    line = Math.trunc((line + 1));
+    line = __ovf((line + 1), -9223372036854775808, 9223372036854775807);
   }
 }
 
@@ -686,20 +817,20 @@ function stepFrame(h) {
     const smp = synthSample(h.synth, h.m.z80);
     h.samples.push(((smp.l << 16) >> 16));
     h.samples.push(((smp.r << 16) >> 16));
-    sa = Math.trunc((sa + 1));
+    sa = __ovf((sa + 1), -9223372036854775808, 9223372036854775807);
   }
   const fb = renderIndexed(h.m);
   const srcW = frameWidth(h.m);
   let i = 0;
   while ((i < fb.length)) {
-    const row = Math.trunc(Math.trunc(i / srcW));
-    const col = (i % srcW);
-    const dst = Math.trunc((Math.trunc((Math.trunc((row * MAXW)) + col)) * 4));
-    h.rgba[dst] = (pixelR(h.m, fb[i]) & 0xFF);
-    h.rgba[Math.trunc((dst + 1))] = (pixelG(h.m, fb[i]) & 0xFF);
-    h.rgba[Math.trunc((dst + 2))] = (pixelB(h.m, fb[i]) & 0xFF);
-    h.rgba[Math.trunc((dst + 3))] = 255;
-    i = Math.trunc((i + 1));
+    const row = __ovf(__idiv(i, srcW), -9223372036854775808, 9223372036854775807);
+    const col = __irem(i, srcW);
+    const dst = __ovf((__ovf((__ovf((row * MAXW), -9223372036854775808, 9223372036854775807) + col), -9223372036854775808, 9223372036854775807) * 4), -9223372036854775808, 9223372036854775807);
+    __idxSet(h.rgba, dst, (pixelR(h.m, __idx(fb, i)) & 0xFF));
+    __idxSet(h.rgba, __ovf((dst + 1), -9223372036854775808, 9223372036854775807), (pixelG(h.m, __idx(fb, i)) & 0xFF));
+    __idxSet(h.rgba, __ovf((dst + 2), -9223372036854775808, 9223372036854775807), (pixelB(h.m, __idx(fb, i)) & 0xFF));
+    __idxSet(h.rgba, __ovf((dst + 3), -9223372036854775808, 9223372036854775807), 255);
+    i = __ovf((i + 1), -9223372036854775808, 9223372036854775807);
   }
 }
 
@@ -711,13 +842,6 @@ function main() {
   return 0;
 }
 
-function romByte(rom, addr) {
-  if ((addr < rom.length)) {
-    return rom[addr];
-  }
-  return 0;
-}
-
 function parseCart(raw) {
   if ((raw.length < 512)) {
     return Result_Cart_string.Err("file too small to be a Genesis ROM");
@@ -726,50 +850,50 @@ function parseCart(raw) {
   for (const b of raw) {
     rom.push(b);
   }
-  let end = Math.trunc((288 + 48));
-  while (((end > 288) && (Math.trunc(rom[Math.trunc((end - 1))]) == 32))) {
-    end = Math.trunc((end - 1));
+  let end = __ovf((288 + 48), -9223372036854775808, 9223372036854775807);
+  while (((end > 288) && (Math.trunc(__idx(rom, __ovf((end - 1), -9223372036854775808, 9223372036854775807))) == 32))) {
+    end = __ovf((end - 1), -9223372036854775808, 9223372036854775807);
   }
-  while ((((end >= 290) && (Math.trunc(rom[Math.trunc((end - 2))]) == 129)) && (Math.trunc(rom[Math.trunc((end - 1))]) == 64))) {
-    end = Math.trunc((end - 2));
+  while ((((end >= 290) && (Math.trunc(__idx(rom, __ovf((end - 2), -9223372036854775808, 9223372036854775807))) == 129)) && (Math.trunc(__idx(rom, __ovf((end - 1), -9223372036854775808, 9223372036854775807))) == 64))) {
+    end = __ovf((end - 2), -9223372036854775808, 9223372036854775807);
   }
   let name = "";
   let j = 288;
   while ((j < end)) {
-    const b = Math.trunc(rom[j]);
-    if ((((b == 129) && (Math.trunc((j + 1)) < end)) && (Math.trunc(rom[Math.trunc((j + 1))]) == 64))) {
+    const b = Math.trunc(__idx(rom, j));
+    if ((((b == 129) && (__ovf((j + 1), -9223372036854775808, 9223372036854775807) < end)) && (Math.trunc(__idx(rom, __ovf((j + 1), -9223372036854775808, 9223372036854775807))) == 64))) {
       name = (name + " ");
-      j = Math.trunc((j + 2));
+      j = __ovf((j + 2), -9223372036854775808, 9223372036854775807);
     } else {
-      if (((b == 130) && (Math.trunc((j + 1)) < end))) {
-        const c = Math.trunc(rom[Math.trunc((j + 1))]);
-        let out = (-1);
+      if (((b == 130) && (__ovf((j + 1), -9223372036854775808, 9223372036854775807) < end))) {
+        const c = Math.trunc(__idx(rom, __ovf((j + 1), -9223372036854775808, 9223372036854775807)));
+        let out = __ovf((-1), -9223372036854775808, 9223372036854775807);
         if (((c >= 79) && (c <= 88))) {
-          out = Math.trunc((48 + Math.trunc((c - 79))));
+          out = __ovf((48 + __ovf((c - 79), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807);
         } else {
           if (((c >= 96) && (c <= 121))) {
-            out = Math.trunc((65 + Math.trunc((c - 96))));
+            out = __ovf((65 + __ovf((c - 96), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807);
           } else {
             if (((c >= 129) && (c <= 154))) {
-              out = Math.trunc((97 + Math.trunc((c - 129))));
+              out = __ovf((97 + __ovf((c - 129), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807);
             }
           }
         }
         if ((out >= 0)) {
           name = (name + charFromByte((out & 0xFF)));
         }
-        j = Math.trunc((j + 2));
+        j = __ovf((j + 2), -9223372036854775808, 9223372036854775807);
       } else {
         if (((b >= 32) && (b <= 126))) {
-          name = (name + charFromByte(rom[j]));
-          j = Math.trunc((j + 1));
+          name = (name + charFromByte(__idx(rom, j)));
+          j = __ovf((j + 1), -9223372036854775808, 9223372036854775807);
         } else {
-          j = Math.trunc((j + 1));
+          j = __ovf((j + 1), -9223372036854775808, 9223372036854775807);
         }
       }
     }
   }
-  const romEnd = ((((((((Math.trunc(rom[420]) << 24) >>> 0) | ((Math.trunc(rom[421]) << 16) >>> 0)) >>> 0) | ((Math.trunc(rom[422]) << 8) >>> 0)) >>> 0) | Math.trunc(rom[423])) >>> 0);
+  const romEnd = ((((((Math.trunc(Math.trunc(__idx(rom, 420)) * 2 ** (__sh(24, 64))) | Math.trunc(Math.trunc(__idx(rom, 421)) * 2 ** (__sh(16, 64)))) >>> 0) | Math.trunc(Math.trunc(__idx(rom, 422)) * 2 ** (__sh(8, 64)))) >>> 0) | Math.trunc(__idx(rom, 423))) >>> 0);
   return Result_Cart_string.Ok(new Cart(rom, name, romEnd));
 }
 
@@ -784,7 +908,7 @@ function newMem() {
   let i = 0;
   while ((i < 16777216)) {
     ram.push(0);
-    i = Math.trunc((i + 1));
+    i = __ovf((i + 1), -9223372036854775808, 9223372036854775807);
   }
   return new Mem(ram, [], false, [], Array.from({length: 64}, () => __clone(0)), Array.from({length: 40}, () => __clone(0)), Array.from({length: 24}, () => __clone(0)), 0, 0, 0, false, 0, false, 0, 0, 0, 0, false, true, newZ80(), 0, false, 0, false, 0, false, Array.from({length: 16}, () => __clone(0)));
 }
@@ -837,7 +961,7 @@ function memRead8(m, addr) {
   if ((m.genesis && isDevice(a))) {
     return devRead8(m, a);
   }
-  return Math.trunc(m.ram[a]);
+  return Math.trunc(__idx(m.ram, a));
 }
 
 function memWrite8(m, addr, val) {
@@ -850,7 +974,7 @@ function memWrite8(m, addr, val) {
       if (((a >= 10485760) && (a <= 10551295))) {
         const za = ((a & 65535) >>> 0);
         if ((za < 8192)) {
-          m.z80.mem[za] = (((val & 255) >>> 0) & 0xFF);
+          __idxSet(m.z80.mem, za, (((val & 255) >>> 0) & 0xFF));
         } else {
           z80DevWrite(m.z80, za, ((val & 255) >>> 0));
         }
@@ -865,7 +989,7 @@ function memWrite8(m, addr, val) {
               m.padTh2 = (((val & 64) >>> 0) != 0);
             } else {
               if (((a >= 10551304) && (a <= 10551311))) {
-                m.ioRegs[((((a | 1) >>> 0) & 15) >>> 0)] = ((val & 255) >>> 0);
+                __idxSet(m.ioRegs, ((((a | 1) >>> 0) & 15) >>> 0), ((val & 255) >>> 0));
               } else {
                 if ((a == 10555648)) {
                   m.z80Busreq = (((val & 1) >>> 0) != 0);
@@ -882,7 +1006,7 @@ function memWrite8(m, addr, val) {
       return;
     }
   }
-  m.ram[a] = (((val & 255) >>> 0) & 0xFF);
+  __idxSet(m.ram, a, (((val & 255) >>> 0) & 0xFF));
   m.touched.push(a);
 }
 
@@ -891,7 +1015,7 @@ function memRead16(m, addr) {
   if ((m.genesis && isDevice(a))) {
     return devRead16(m, a);
   }
-  return ((((Math.trunc(m.ram[a]) << 8) >>> 0) | Math.trunc(m.ram[((Math.trunc((a + 1)) & ADDR_MASK) >>> 0)])) >>> 0);
+  return ((Math.trunc(Math.trunc(__idx(m.ram, a)) * 2 ** (__sh(8, 64))) | Math.trunc(__idx(m.ram, ((__ovf((a + 1), -9223372036854775808, 9223372036854775807) & ADDR_MASK) >>> 0)))) >>> 0);
 }
 
 function memWrite16(m, addr, val) {
@@ -905,8 +1029,8 @@ function memWrite16(m, addr, val) {
       return;
     }
   }
-  memWrite8(m, addr, ((Math.floor(val / 2 ** (8)) & 255) >>> 0));
-  memWrite8(m, Math.trunc((addr + 1)), ((val & 255) >>> 0));
+  memWrite8(m, addr, ((Math.floor(val / 2 ** (__sh(8, 64))) & 255) >>> 0));
+  memWrite8(m, __ovf((addr + 1), -9223372036854775808, 9223372036854775807), ((val & 255) >>> 0));
 }
 
 function isDevice(a) {
@@ -926,7 +1050,7 @@ function devRead16(m, a) {
     return vdpStatus(m);
   }
   if (((a == 12582920) || (a == 12582922))) {
-    return ((((m.vdpLine & 255) >>> 0) << 8) >>> 0);
+    return Math.trunc(((m.vdpLine & 255) >>> 0) * 2 ** (__sh(8, 64)));
   }
   if (((a == 12582912) || (a == 12582914))) {
     return 0;
@@ -941,8 +1065,8 @@ function devRead16(m, a) {
     return 65535;
   }
   if (((a >= 10551304) && (a <= 10551311))) {
-    const b = m.ioRegs[((((a | 1) >>> 0) & 15) >>> 0)];
-    return ((((b << 8) >>> 0) | b) >>> 0);
+    const b = __idx(m.ioRegs, ((((a | 1) >>> 0) & 15) >>> 0));
+    return ((Math.trunc(b * 2 ** (__sh(8, 64))) | b) >>> 0);
   }
   return 0;
 }
@@ -951,7 +1075,7 @@ function devRead8(m, a) {
   if (((a >= 10485760) && (a <= 10551295))) {
     const za = ((a & 65535) >>> 0);
     if ((za < 8192)) {
-      return Math.trunc(m.z80.mem[za]);
+      return Math.trunc(__idx(m.z80.mem, za));
     }
     return 0;
   }
@@ -966,7 +1090,7 @@ function devRead8(m, a) {
   }
   const w = devRead16(m, ((a & (~1)) >>> 0));
   if ((((a & 1) >>> 0) == 0)) {
-    return ((Math.floor(w / 2 ** (8)) & 255) >>> 0);
+    return ((Math.floor(w / 2 ** (__sh(8, 64))) & 255) >>> 0);
   }
   return ((w & 255) >>> 0);
 }
@@ -975,11 +1099,11 @@ function devWrite16(m, a, val) {
   if (((a >= 10485760) && (a <= 10551295))) {
     const za = ((a & 65535) >>> 0);
     if ((za < 8192)) {
-      m.z80.mem[za] = (((Math.floor(val / 2 ** (8)) & 255) >>> 0) & 0xFF);
-      m.z80.mem[((Math.trunc((za + 1)) & 8191) >>> 0)] = (((val & 255) >>> 0) & 0xFF);
+      __idxSet(m.z80.mem, za, (((Math.floor(val / 2 ** (__sh(8, 64))) & 255) >>> 0) & 0xFF));
+      __idxSet(m.z80.mem, ((__ovf((za + 1), -9223372036854775808, 9223372036854775807) & 8191) >>> 0), (((val & 255) >>> 0) & 0xFF));
     } else {
-      z80DevWrite(m.z80, za, ((Math.floor(val / 2 ** (8)) & 255) >>> 0));
-      z80DevWrite(m.z80, Math.trunc((za + 1)), ((val & 255) >>> 0));
+      z80DevWrite(m.z80, za, ((Math.floor(val / 2 ** (__sh(8, 64))) & 255) >>> 0));
+      z80DevWrite(m.z80, __ovf((za + 1), -9223372036854775808, 9223372036854775807), ((val & 255) >>> 0));
     }
     return;
   }
@@ -1013,7 +1137,7 @@ function devWrite16(m, a, val) {
     return;
   }
   if (((a >= 10551304) && (a <= 10551310))) {
-    m.ioRegs[((((a | 1) >>> 0) & 15) >>> 0)] = ((val & 255) >>> 0);
+    __idxSet(m.ioRegs, ((((a | 1) >>> 0) & 15) >>> 0), ((val & 255) >>> 0));
   }
 }
 
@@ -1021,17 +1145,17 @@ function vdpControlWrite(m, val) {
   if (m.vdpPending) {
     m.vdpPending = false;
     const first = m.vdpFirst;
-    m.vdpAddr = ((((first & 16383) >>> 0) | ((((val & 3) >>> 0) << 14) >>> 0)) >>> 0);
-    m.vdpCode = ((((Math.floor(first / 2 ** (14)) & 3) >>> 0) | ((Math.floor(val / 2 ** (2)) & 60) >>> 0)) >>> 0);
+    m.vdpAddr = ((((first & 16383) >>> 0) | Math.trunc(((val & 3) >>> 0) * 2 ** (__sh(14, 64)))) >>> 0);
+    m.vdpCode = ((((Math.floor(first / 2 ** (__sh(14, 64))) & 3) >>> 0) | ((Math.floor(val / 2 ** (__sh(2, 64))) & 60) >>> 0)) >>> 0);
     if ((((m.vdpCode & 32) >>> 0) != 0)) {
       vdpDma(m);
     }
     return;
   }
   if ((((val & 49152) >>> 0) == 32768)) {
-    const reg = ((Math.floor(val / 2 ** (8)) & 31) >>> 0);
+    const reg = ((Math.floor(val / 2 ** (__sh(8, 64))) & 31) >>> 0);
     if ((reg < 24)) {
-      m.vdpRegs[reg] = ((val & 255) >>> 0);
+      __idxSet(m.vdpRegs, reg, ((val & 255) >>> 0));
     }
     return;
   }
@@ -1040,14 +1164,14 @@ function vdpControlWrite(m, val) {
 }
 
 function vdpDma(m) {
-  const mode = ((Math.floor(m.vdpRegs[23] / 2 ** (6)) & 3) >>> 0);
+  const mode = ((Math.floor(__idx(m.vdpRegs, 23) / 2 ** (__sh(6, 64))) & 3) >>> 0);
   if ((mode == 2)) {
-    let flen = ((((m.vdpRegs[20] << 8) >>> 0) | m.vdpRegs[19]) >>> 0);
+    let flen = ((Math.trunc(__idx(m.vdpRegs, 20) * 2 ** (__sh(8, 64))) | __idx(m.vdpRegs, 19)) >>> 0);
     if ((flen == 0)) {
       flen = 65536;
     }
     m.fillAddr = m.vdpAddr;
-    m.fillInc = m.vdpRegs[15];
+    m.fillInc = __idx(m.vdpRegs, 15);
     m.fillLen = flen;
     doFill(m, m.lastDataByte);
     return;
@@ -1056,24 +1180,24 @@ function vdpDma(m) {
     vdpDmaCopy(m);
     return;
   }
-  let src = ((((((((m.vdpRegs[23] & 127) >>> 0) << 17) >>> 0) | ((m.vdpRegs[22] << 9) >>> 0)) >>> 0) | ((m.vdpRegs[21] << 1) >>> 0)) >>> 0);
-  let len = ((((m.vdpRegs[20] << 8) >>> 0) | m.vdpRegs[19]) >>> 0);
+  let src = ((((Math.trunc(((__idx(m.vdpRegs, 23) & 127) >>> 0) * 2 ** (__sh(17, 64))) | Math.trunc(__idx(m.vdpRegs, 22) * 2 ** (__sh(9, 64)))) >>> 0) | Math.trunc(__idx(m.vdpRegs, 21) * 2 ** (__sh(1, 64)))) >>> 0);
+  let len = ((Math.trunc(__idx(m.vdpRegs, 20) * 2 ** (__sh(8, 64))) | __idx(m.vdpRegs, 19)) >>> 0);
   if ((len == 0)) {
     len = 65536;
   }
   let i = 0;
   while ((i < len)) {
     const a = ((src & 16777215) >>> 0);
-    const w = ((((Math.trunc(m.ram[a]) << 8) >>> 0) | Math.trunc(m.ram[((Math.trunc((a + 1)) & 16777215) >>> 0)])) >>> 0);
+    const w = ((Math.trunc(Math.trunc(__idx(m.ram, a)) * 2 ** (__sh(8, 64))) | Math.trunc(__idx(m.ram, ((__ovf((a + 1), -9223372036854775808, 9223372036854775807) & 16777215) >>> 0)))) >>> 0);
     vdpDataWrite(m, w);
-    src = ((Math.trunc((src + 2)) & 16777215) >>> 0);
-    i = Math.trunc((i + 1));
+    src = ((__ovf((src + 2), -9223372036854775808, 9223372036854775807) & 16777215) >>> 0);
+    i = __ovf((i + 1), -9223372036854775808, 9223372036854775807);
   }
-  const srcWord = ((Math.floor(src / 2 ** (1)) & 65535) >>> 0);
-  m.vdpRegs[21] = ((srcWord & 255) >>> 0);
-  m.vdpRegs[22] = ((Math.floor(srcWord / 2 ** (8)) & 255) >>> 0);
-  m.vdpRegs[19] = 0;
-  m.vdpRegs[20] = 0;
+  const srcWord = ((Math.floor(src / 2 ** (__sh(1, 64))) & 65535) >>> 0);
+  __idxSet(m.vdpRegs, 21, ((srcWord & 255) >>> 0));
+  __idxSet(m.vdpRegs, 22, ((Math.floor(srcWord / 2 ** (__sh(8, 64))) & 255) >>> 0));
+  __idxSet(m.vdpRegs, 19, 0);
+  __idxSet(m.vdpRegs, 20, 0);
 }
 
 function vramPut(m, idx, byte) {
@@ -1081,12 +1205,12 @@ function vramPut(m, idx, byte) {
   while ((m.vram.length <= i)) {
     m.vram.push(0);
   }
-  m.vram[i] = byte;
+  __idxSet(m.vram, i, byte);
 }
 
 function vdpDmaCopy(m) {
-  let src = ((((m.vdpRegs[22] << 8) >>> 0) | m.vdpRegs[21]) >>> 0);
-  let len = ((((m.vdpRegs[20] << 8) >>> 0) | m.vdpRegs[19]) >>> 0);
+  let src = ((Math.trunc(__idx(m.vdpRegs, 22) * 2 ** (__sh(8, 64))) | __idx(m.vdpRegs, 21)) >>> 0);
+  let len = ((Math.trunc(__idx(m.vdpRegs, 20) * 2 ** (__sh(8, 64))) | __idx(m.vdpRegs, 19)) >>> 0);
   if ((len == 0)) {
     len = 65536;
   }
@@ -1095,15 +1219,15 @@ function vdpDmaCopy(m) {
   while ((i < len)) {
     const sb = (() => {
     if ((((src & VRAM_MASK) >>> 0) < m.vram.length)) {
-      return m.vram[((src & VRAM_MASK) >>> 0)];
+      return __idx(m.vram, ((src & VRAM_MASK) >>> 0));
     } else {
       return 0;
     }
     })();
     vramPut(m, dst, sb);
-    src = ((Math.trunc((src + 1)) & 65535) >>> 0);
-    dst = ((Math.trunc((dst + m.vdpRegs[15])) & 65535) >>> 0);
-    i = Math.trunc((i + 1));
+    src = ((__ovf((src + 1), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
+    dst = ((__ovf((dst + __idx(m.vdpRegs, 15)), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
+    i = __ovf((i + 1), -9223372036854775808, 9223372036854775807);
   }
   m.vdpAddr = ((dst & 131071) >>> 0);
 }
@@ -1117,48 +1241,48 @@ function doFill(m, fillByteIn) {
   let i = 0;
   while ((i < len)) {
     vramPut(m, da, fillByte);
-    da = ((Math.trunc((da + inc)) & 131071) >>> 0);
-    i = Math.trunc((i + 1));
+    da = ((__ovf((da + inc), -9223372036854775808, 9223372036854775807) & 131071) >>> 0);
+    i = __ovf((i + 1), -9223372036854775808, 9223372036854775807);
   }
   m.vdpAddr = ((da & 131071) >>> 0);
 }
 
 function vdpDataWrite(m, val) {
-  m.lastDataByte = ((Math.floor(val / 2 ** (8)) & 255) >>> 0);
+  m.lastDataByte = ((Math.floor(val / 2 ** (__sh(8, 64))) & 255) >>> 0);
   const target = ((m.vdpCode & 15) >>> 0);
   const a = m.vdpAddr;
   if ((target == 1)) {
     const base = ((((a & VRAM_MASK) >>> 0) & 65534) >>> 0);
-    const hi = (((Math.floor(val / 2 ** (8)) & 255) >>> 0) & 0xFF);
+    const hi = (((Math.floor(val / 2 ** (__sh(8, 64))) & 255) >>> 0) & 0xFF);
     const lo = (((val & 255) >>> 0) & 0xFF);
     if ((((a & 1) >>> 0) == 0)) {
       vramPut(m, base, hi);
-      vramPut(m, Math.trunc((base + 1)), lo);
+      vramPut(m, __ovf((base + 1), -9223372036854775808, 9223372036854775807), lo);
     } else {
       vramPut(m, base, lo);
-      vramPut(m, Math.trunc((base + 1)), hi);
+      vramPut(m, __ovf((base + 1), -9223372036854775808, 9223372036854775807), hi);
     }
   } else {
     if ((target == 3)) {
-      const idx = ((Math.floor(a / 2 ** (1)) & 63) >>> 0);
-      m.cram[idx] = ((val & 3822) >>> 0);
+      const idx = ((Math.floor(a / 2 ** (__sh(1, 64))) & 63) >>> 0);
+      __idxSet(m.cram, idx, ((val & 3822) >>> 0));
     } else {
       if ((target == 5)) {
-        const idx = (Math.floor(a / 2 ** (1)) % 40);
-        m.vsram[idx] = ((val & 2047) >>> 0);
+        const idx = __irem(Math.floor(a / 2 ** (__sh(1, 64))), 40);
+        __idxSet(m.vsram, idx, ((val & 2047) >>> 0));
       }
     }
   }
-  m.vdpAddr = ((Math.trunc((a + m.vdpRegs[15])) & 131071) >>> 0);
+  m.vdpAddr = ((__ovf((a + __idx(m.vdpRegs, 15)), -9223372036854775808, 9223372036854775807) & 131071) >>> 0);
 }
 
 function memRead32(m, addr) {
-  return ((((memRead16(m, addr) << 16) >>> 0) | memRead16(m, Math.trunc((addr + 2)))) >>> 0);
+  return ((Math.trunc(memRead16(m, addr) * 2 ** (__sh(16, 64))) | memRead16(m, __ovf((addr + 2), -9223372036854775808, 9223372036854775807))) >>> 0);
 }
 
 function memWrite32(m, addr, val) {
-  memWrite16(m, addr, ((Math.floor(val / 2 ** (16)) & 65535) >>> 0));
-  memWrite16(m, Math.trunc((addr + 2)), ((val & 65535) >>> 0));
+  memWrite16(m, addr, ((Math.floor(val / 2 ** (__sh(16, 64))) & 65535) >>> 0));
+  memWrite16(m, __ovf((addr + 2), -9223372036854775808, 9223372036854775807), ((val & 65535) >>> 0));
 }
 
 function newCpu() {
@@ -1216,38 +1340,38 @@ function signExtend(val, size) {
   const v = ((val & m) >>> 0);
   const msb = sizeMsb(size);
   if ((((v & msb) >>> 0) != 0)) {
-    return Math.trunc((v - Math.trunc((m + 1))));
+    return __ovf((v - __ovf((m + 1), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807);
   }
   return v;
 }
 
 function getD(cpu, n, size) {
-  return ((cpu.d[n] & sizeMask(size)) >>> 0);
+  return ((__idx(cpu.d, n) & sizeMask(size)) >>> 0);
 }
 
 function setD(cpu, n, size, val) {
   const m = sizeMask(size);
-  cpu.d[n] = ((((cpu.d[n] & (~m)) >>> 0) | ((val & m) >>> 0)) >>> 0);
+  __idxSet(cpu.d, n, ((((__idx(cpu.d, n) & (~m)) >>> 0) | ((val & m) >>> 0)) >>> 0));
 }
 
 function setA(cpu, n, size, val) {
   if ((size == 1)) {
-    cpu.a[n] = ((signExtend(val, 1) & 4294967295) >>> 0);
+    __idxSet(cpu.a, n, ((signExtend(val, 1) & 4294967295) >>> 0));
   } else {
-    cpu.a[n] = ((val & 4294967295) >>> 0);
+    __idxSet(cpu.a, n, ((val & 4294967295) >>> 0));
   }
 }
 
 function fetch16(cpu, m) {
   const w = memRead16(m, cpu.pc);
-  cpu.pc = ((Math.trunc((cpu.pc + 2)) & 4294967295) >>> 0);
+  cpu.pc = ((__ovf((cpu.pc + 2), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0);
   return w;
 }
 
 function fetch32(cpu, m) {
   const hi = fetch16(cpu, m);
   const lo = fetch16(cpu, m);
-  return ((((hi << 16) >>> 0) | lo) >>> 0);
+  return ((Math.trunc(hi * 2 ** (__sh(16, 64))) | lo) >>> 0);
 }
 
 function incrStep(reg, size) {
@@ -1259,13 +1383,13 @@ function incrStep(reg, size) {
 }
 
 function briefIndex(cpu, ext) {
-  const ri = ((Math.floor(ext / 2 ** (12)) & 7) >>> 0);
+  const ri = ((Math.floor(ext / 2 ** (__sh(12, 64))) & 7) >>> 0);
   const isAddr = (((ext & 32768) >>> 0) != 0);
   let idx = (() => {
   if (isAddr) {
-    return cpu.a[ri];
+    return __idx(cpu.a, ri);
   } else {
-    return cpu.d[ri];
+    return __idx(cpu.d, ri);
   }
   })();
   if ((((ext & 2048) >>> 0) == 0)) {
@@ -1282,26 +1406,26 @@ function resolveEa(cpu, m, mode, reg, size) {
     return Ea.AReg(reg);
   }
   if ((mode == 2)) {
-    return Ea.MemAddr(((cpu.a[reg] & 4294967295) >>> 0));
+    return Ea.MemAddr(((__idx(cpu.a, reg) & 4294967295) >>> 0));
   }
   if ((mode == 3)) {
-    const addr = ((cpu.a[reg] & 4294967295) >>> 0);
-    cpu.a[reg] = ((Math.trunc((cpu.a[reg] + incrStep(reg, size))) & 4294967295) >>> 0);
+    const addr = ((__idx(cpu.a, reg) & 4294967295) >>> 0);
+    __idxSet(cpu.a, reg, ((__ovf((__idx(cpu.a, reg) + incrStep(reg, size)), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0));
     return Ea.MemAddr(addr);
   }
   if ((mode == 4)) {
-    cpu.a[reg] = ((Math.trunc((cpu.a[reg] - incrStep(reg, size))) & 4294967295) >>> 0);
-    return Ea.MemAddr(((cpu.a[reg] & 4294967295) >>> 0));
+    __idxSet(cpu.a, reg, ((__ovf((__idx(cpu.a, reg) - incrStep(reg, size)), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0));
+    return Ea.MemAddr(((__idx(cpu.a, reg) & 4294967295) >>> 0));
   }
   if ((mode == 5)) {
     const d16 = signExtend(fetch16(cpu, m), 1);
-    return Ea.MemAddr(((Math.trunc((cpu.a[reg] + d16)) & 4294967295) >>> 0));
+    return Ea.MemAddr(((__ovf((__idx(cpu.a, reg) + d16), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0));
   }
   if ((mode == 6)) {
-    const base = cpu.a[reg];
+    const base = __idx(cpu.a, reg);
     const ext = fetch16(cpu, m);
     const disp = signExtend(((ext & 255) >>> 0), 0);
-    return Ea.MemAddr(((Math.trunc((Math.trunc((base + disp)) + briefIndex(cpu, ext))) & 4294967295) >>> 0));
+    return Ea.MemAddr(((__ovf((__ovf((base + disp), -9223372036854775808, 9223372036854775807) + briefIndex(cpu, ext)), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0));
   }
   if ((reg == 0)) {
     return Ea.MemAddr(((signExtend(fetch16(cpu, m), 1) & 4294967295) >>> 0));
@@ -1312,13 +1436,13 @@ function resolveEa(cpu, m, mode, reg, size) {
   if ((reg == 2)) {
     const base = cpu.pc;
     const d16 = signExtend(fetch16(cpu, m), 1);
-    return Ea.MemAddr(((Math.trunc((base + d16)) & 4294967295) >>> 0));
+    return Ea.MemAddr(((__ovf((base + d16), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0));
   }
   if ((reg == 3)) {
     const base = cpu.pc;
     const ext = fetch16(cpu, m);
     const disp = signExtend(((ext & 255) >>> 0), 0);
-    return Ea.MemAddr(((Math.trunc((Math.trunc((base + disp)) + briefIndex(cpu, ext))) & 4294967295) >>> 0));
+    return Ea.MemAddr(((__ovf((__ovf((base + disp), -9223372036854775808, 9223372036854775807) + briefIndex(cpu, ext)), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0));
   }
   if ((size == 2)) {
     return Ea.Imm(fetch32(cpu, m));
@@ -1327,15 +1451,15 @@ function resolveEa(cpu, m, mode, reg, size) {
 }
 
 function eaLoad(cpu, m, ea, size) {
-  const _t1 = ea;
-  if (_t1.tag === 0) {
-    const n = _t1.data[0];
+  const _t19 = ea;
+  if (_t19.tag === 0) {
+    const n = _t19.data[0];
     return getD(cpu, n, size);
-  } else if (_t1.tag === 1) {
-    const n = _t1.data[0];
-    return ((signExtend(cpu.a[n], size) & sizeMask(size)) >>> 0);
-  } else if (_t1.tag === 2) {
-    const addr = _t1.data[0];
+  } else if (_t19.tag === 1) {
+    const n = _t19.data[0];
+    return ((signExtend(__idx(cpu.a, n), size) & sizeMask(size)) >>> 0);
+  } else if (_t19.tag === 2) {
+    const addr = _t19.data[0];
     if (checkAlign(cpu, addr, size, true, false)) {
       return 0;
     }
@@ -1346,22 +1470,22 @@ function eaLoad(cpu, m, ea, size) {
       return memRead16(m, addr);
     }
     return memRead32(m, addr);
-  } else if (_t1.tag === 3) {
-    const v = _t1.data[0];
+  } else if (_t19.tag === 3) {
+    const v = _t19.data[0];
     return ((v & sizeMask(size)) >>> 0);
   }
 }
 
 function eaStore(cpu, m, ea, size, val) {
-  const _t2 = ea;
-  if (_t2.tag === 0) {
-    const n = _t2.data[0];
+  const _t20 = ea;
+  if (_t20.tag === 0) {
+    const n = _t20.data[0];
     setD(cpu, n, size, val);
-  } else if (_t2.tag === 1) {
-    const n = _t2.data[0];
+  } else if (_t20.tag === 1) {
+    const n = _t20.data[0];
     setA(cpu, n, size, val);
-  } else if (_t2.tag === 2) {
-    const addr = _t2.data[0];
+  } else if (_t20.tag === 2) {
+    const addr = _t20.data[0];
     if (checkAlign(cpu, addr, size, false, false)) {
       return;
     }
@@ -1374,8 +1498,8 @@ function eaStore(cpu, m, ea, size, val) {
         memWrite32(m, addr, val);
       }
     }
-  } else if (_t2.tag === 3) {
-    const v = _t2.data[0];
+  } else if (_t20.tag === 3) {
+    const v = _t20.data[0];
   }
 }
 
@@ -1409,7 +1533,7 @@ function addFlags(cpu, size, a, b, res, withX) {
   const ua = ((a & mask) >>> 0);
   const ub = ((b & mask) >>> 0);
   const r = ((res & mask) >>> 0);
-  const carry = (Math.trunc((ua + ub)) > mask);
+  const carry = (__ovf((ua + ub), -9223372036854775808, 9223372036854775807) > mask);
   const overflow = ((((((~((a ^ b) >>> 0)) & ((a ^ res) >>> 0)) >>> 0) & msb) >>> 0) != 0);
   setNZ(cpu, size, r);
   setBit(cpu, SR_V, overflow);
@@ -1489,13 +1613,13 @@ function testCond(cpu, cond) {
 }
 
 function pushLong(cpu, m, val) {
-  cpu.a[7] = ((Math.trunc((cpu.a[7] - 4)) & 4294967295) >>> 0);
-  memWrite32(m, cpu.a[7], val);
+  __idxSet(cpu.a, 7, ((__ovf((__idx(cpu.a, 7) - 4), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0));
+  memWrite32(m, __idx(cpu.a, 7), val);
 }
 
 function pushWord(cpu, m, val) {
-  cpu.a[7] = ((Math.trunc((cpu.a[7] - 2)) & 4294967295) >>> 0);
-  memWrite16(m, cpu.a[7], ((val & 65535) >>> 0));
+  __idxSet(cpu.a, 7, ((__ovf((__idx(cpu.a, 7) - 2), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0));
+  memWrite16(m, __idx(cpu.a, 7), ((val & 65535) >>> 0));
 }
 
 function raiseAddressError(cpu, m, ir) {
@@ -1503,8 +1627,8 @@ function raiseAddressError(cpu, m, ir) {
   const wasSuper = (((oldSr & SR_S) >>> 0) != 0);
   cpu.sr = ((((cpu.sr | SR_S) >>> 0) & (~SR_T)) >>> 0);
   if ((!wasSuper)) {
-    const tmp = cpu.a[7];
-    cpu.a[7] = cpu.otherSp;
+    const tmp = __idx(cpu.a, 7);
+    __idxSet(cpu.a, 7, cpu.otherSp);
     cpu.otherSp = tmp;
   }
   let fc = 1;
@@ -1535,24 +1659,24 @@ function raiseAddressError(cpu, m, ir) {
   pushWord(cpu, m, ir);
   pushLong(cpu, m, cpu.faultAddr);
   pushWord(cpu, m, ssw);
-  cpu.pc = ((memRead32(m, Math.trunc((3 * 4))) & 4294967295) >>> 0);
+  cpu.pc = ((memRead32(m, __ovf((3 * 4), -9223372036854775808, 9223372036854775807)) & 4294967295) >>> 0);
 }
 
 function popLong(cpu, m) {
-  const v = memRead32(m, cpu.a[7]);
-  cpu.a[7] = ((Math.trunc((cpu.a[7] + 4)) & 4294967295) >>> 0);
+  const v = memRead32(m, __idx(cpu.a, 7));
+  __idxSet(cpu.a, 7, ((__ovf((__idx(cpu.a, 7) + 4), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0));
   return v;
 }
 
 function popWord(cpu, m) {
-  const v = memRead16(m, cpu.a[7]);
-  cpu.a[7] = ((Math.trunc((cpu.a[7] + 2)) & 4294967295) >>> 0);
+  const v = memRead16(m, __idx(cpu.a, 7));
+  __idxSet(cpu.a, 7, ((__ovf((__idx(cpu.a, 7) + 2), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0));
   return v;
 }
 
 function privViolation(cpu, m) {
   if ((((cpu.sr & SR_S) >>> 0) == 0)) {
-    cpu.pc = ((Math.trunc((cpu.pc - 2)) & 4294967295) >>> 0);
+    cpu.pc = ((__ovf((cpu.pc - 2), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0);
     raiseException(cpu, m, 8);
     return true;
   }
@@ -1563,30 +1687,30 @@ function setSr(cpu, newSr) {
   const oldS = (((cpu.sr & SR_S) >>> 0) != 0);
   cpu.sr = ((newSr & 65535) >>> 0);
   if ((oldS != (((cpu.sr & SR_S) >>> 0) != 0))) {
-    const tmp = cpu.a[7];
-    cpu.a[7] = cpu.otherSp;
+    const tmp = __idx(cpu.a, 7);
+    __idxSet(cpu.a, 7, cpu.otherSp);
     cpu.otherSp = tmp;
   }
 }
 
 function deliverInterrupt(cpu, m, level) {
-  const curMask = ((Math.floor(cpu.sr / 2 ** (8)) & 7) >>> 0);
+  const curMask = ((Math.floor(cpu.sr / 2 ** (__sh(8, 64))) & 7) >>> 0);
   if (((level != 7) && (level <= curMask))) {
     return false;
   }
   const oldSr = cpu.sr;
   const wasSuper = (((oldSr & SR_S) >>> 0) != 0);
-  cpu.sr = ((((cpu.sr & (~1792)) >>> 0) | ((((level & 7) >>> 0) << 8) >>> 0)) >>> 0);
+  cpu.sr = ((((cpu.sr & (~1792)) >>> 0) | Math.trunc(((level & 7) >>> 0) * 2 ** (__sh(8, 64)))) >>> 0);
   cpu.sr = ((((cpu.sr | SR_S) >>> 0) & (~SR_T)) >>> 0);
   if ((!wasSuper)) {
-    const tmp = cpu.a[7];
-    cpu.a[7] = cpu.otherSp;
+    const tmp = __idx(cpu.a, 7);
+    __idxSet(cpu.a, 7, cpu.otherSp);
     cpu.otherSp = tmp;
   }
   cpu.halted = false;
   pushLong(cpu, m, cpu.pc);
   pushWord(cpu, m, oldSr);
-  cpu.pc = ((memRead32(m, Math.trunc((Math.trunc((24 + level)) * 4))) & 4294967295) >>> 0);
+  cpu.pc = ((memRead32(m, __ovf((__ovf((24 + level), -9223372036854775808, 9223372036854775807) * 4), -9223372036854775808, 9223372036854775807)) & 4294967295) >>> 0);
   return true;
 }
 
@@ -1595,13 +1719,13 @@ function raiseException(cpu, m, vec) {
   const wasSuper = (((oldSr & SR_S) >>> 0) != 0);
   cpu.sr = ((((cpu.sr | SR_S) >>> 0) & (~SR_T)) >>> 0);
   if ((!wasSuper)) {
-    const tmp = cpu.a[7];
-    cpu.a[7] = cpu.otherSp;
+    const tmp = __idx(cpu.a, 7);
+    __idxSet(cpu.a, 7, cpu.otherSp);
     cpu.otherSp = tmp;
   }
   pushLong(cpu, m, cpu.pc);
   pushWord(cpu, m, oldSr);
-  cpu.pc = ((memRead32(m, Math.trunc((vec * 4))) & 4294967295) >>> 0);
+  cpu.pc = ((memRead32(m, __ovf((vec * 4), -9223372036854775808, 9223372036854775807)) & 4294967295) >>> 0);
 }
 
 function setPc(cpu, target) {
@@ -1631,8 +1755,8 @@ function step(cpu, m) {
   let savedD = [0, 0, 0, 0, 0, 0, 0, 0];
   let si = 0;
   while ((si < 8)) {
-    savedD[si] = cpu.d[si];
-    si = Math.trunc((si + 1));
+    __idxSet(savedD, si, __idx(cpu.d, si));
+    si = __ovf((si + 1), -9223372036854775808, 9223372036854775807);
   }
   const savedSr = cpu.sr;
   const op = fetch16(cpu, m);
@@ -1641,8 +1765,8 @@ function step(cpu, m) {
     if ((!cpu.faultCommit)) {
       si = 0;
       while ((si < 8)) {
-        cpu.d[si] = savedD[si];
-        si = Math.trunc((si + 1));
+        __idxSet(cpu.d, si, __idx(savedD, si));
+        si = __ovf((si + 1), -9223372036854775808, 9223372036854775807);
       }
       cpu.sr = savedSr;
     }
@@ -1653,7 +1777,7 @@ function step(cpu, m) {
 }
 
 function decode(cpu, m, op) {
-  const top = ((Math.floor(op / 2 ** (12)) & 15) >>> 0);
+  const top = ((Math.floor(op / 2 ** (__sh(12, 64))) & 15) >>> 0);
   if ((top == 1)) {
     return execMove(cpu, m, op, 0);
   }
@@ -1665,7 +1789,7 @@ function decode(cpu, m, op) {
   }
   if ((top == 7)) {
     if ((((op & 256) >>> 0) == 0)) {
-      const reg = ((Math.floor(op / 2 ** (9)) & 7) >>> 0);
+      const reg = ((Math.floor(op / 2 ** (__sh(9, 64))) & 7) >>> 0);
       const val = signExtend(((op & 255) >>> 0), 0);
       setD(cpu, reg, 2, ((val & 4294967295) >>> 0));
       setLogicalFlags(cpu, 2, val);
@@ -1731,7 +1855,7 @@ function doShift(cpu, val, size, cnt, sty, left) {
           xf = msbBit;
         }
       }
-      v = ((((((v << 1) >>> 0) | (() => {
+      v = ((((Math.trunc(v * 2 ** (__sh(1, 64))) | (() => {
       if (newLsb) {
         return 1;
       } else {
@@ -1763,7 +1887,7 @@ function doShift(cpu, val, size, cnt, sty, left) {
           }
         }
       }
-      v = ((((Math.floor(v / 2 ** (1)) | (() => {
+      v = ((((Math.floor(v / 2 ** (__sh(1, 64))) | (() => {
       if (newMsb) {
         return msb;
       } else {
@@ -1771,7 +1895,7 @@ function doShift(cpu, val, size, cnt, sty, left) {
       }
       })()) >>> 0) & mask) >>> 0);
     }
-    i = Math.trunc((i + 1));
+    i = __ovf((i + 1), -9223372036854775808, 9223372036854775807);
   }
   setNZ(cpu, size, v);
   setBit(cpu, SR_V, (((sty == 0) && left) && overflow));
@@ -1793,8 +1917,8 @@ function doShift(cpu, val, size, cnt, sty, left) {
 function execShift(cpu, m, op) {
   const left = (((op & 256) >>> 0) != 0);
   if ((((op & 192) >>> 0) == 192)) {
-    const sty = ((Math.floor(op / 2 ** (9)) & 3) >>> 0);
-    const mode = ((Math.floor(op / 2 ** (3)) & 7) >>> 0);
+    const sty = ((Math.floor(op / 2 ** (__sh(9, 64))) & 3) >>> 0);
+    const mode = ((Math.floor(op / 2 ** (__sh(3, 64))) & 7) >>> 0);
     const reg = ((op & 7) >>> 0);
     const ea = resolveEa(cpu, m, mode, reg, 1);
     const v = eaLoad(cpu, m, ea, 1);
@@ -1802,17 +1926,17 @@ function execShift(cpu, m, op) {
     eaStore(cpu, m, ea, 1, r);
     return true;
   }
-  const size = ((Math.floor(op / 2 ** (6)) & 3) >>> 0);
-  const sty = ((Math.floor(op / 2 ** (3)) & 3) >>> 0);
-  const ir = ((Math.floor(op / 2 ** (5)) & 1) >>> 0);
+  const size = ((Math.floor(op / 2 ** (__sh(6, 64))) & 3) >>> 0);
+  const sty = ((Math.floor(op / 2 ** (__sh(3, 64))) & 3) >>> 0);
+  const ir = ((Math.floor(op / 2 ** (__sh(5, 64))) & 1) >>> 0);
   const reg = ((op & 7) >>> 0);
-  let cnt = ((Math.floor(op / 2 ** (9)) & 7) >>> 0);
+  let cnt = ((Math.floor(op / 2 ** (__sh(9, 64))) & 7) >>> 0);
   if ((ir == 0)) {
     if ((cnt == 0)) {
       cnt = 8;
     }
   } else {
-    cnt = ((getD(cpu, ((Math.floor(op / 2 ** (9)) & 7) >>> 0), 2) & 63) >>> 0);
+    cnt = ((getD(cpu, ((Math.floor(op / 2 ** (__sh(9, 64))) & 7) >>> 0), 2) & 63) >>> 0);
   }
   const v = getD(cpu, reg, size);
   const r = doShift(cpu, v, size, cnt, sty, left);
@@ -1829,12 +1953,12 @@ function execImmediate(cpu, m, op) {
   if ((dynamicBit || staticBit)) {
     return execBitOp(cpu, m, op, staticBit);
   }
-  const which = ((Math.floor(op / 2 ** (9)) & 7) >>> 0);
-  const size = ((Math.floor(op / 2 ** (6)) & 3) >>> 0);
+  const which = ((Math.floor(op / 2 ** (__sh(9, 64))) & 7) >>> 0);
+  const size = ((Math.floor(op / 2 ** (__sh(6, 64))) & 3) >>> 0);
   if ((size == 3)) {
     return false;
   }
-  const mode = ((Math.floor(op / 2 ** (3)) & 7) >>> 0);
+  const mode = ((Math.floor(op / 2 ** (__sh(3, 64))) & 7) >>> 0);
   const reg = ((op & 7) >>> 0);
   if ((((mode == 7) && (reg == 4)) && (((which == 0) || (which == 1)) || (which == 5)))) {
     const imm = fetch16(cpu, m);
@@ -1848,8 +1972,8 @@ function execImmediate(cpu, m, op) {
     const r = ((applyLogic(which, cpu.sr, imm) & 42783) >>> 0);
     cpu.sr = r;
     if ((oldS != (((r & SR_S) >>> 0) != 0))) {
-      const tmp = cpu.a[7];
-      cpu.a[7] = cpu.otherSp;
+      const tmp = __idx(cpu.a, 7);
+      __idxSet(cpu.a, 7, cpu.otherSp);
       cpu.otherSp = tmp;
     }
     return true;
@@ -1864,17 +1988,17 @@ function execImmediate(cpu, m, op) {
   const ea = resolveEa(cpu, m, mode, reg, size);
   const cur = eaLoad(cpu, m, ea, size);
   if ((which == 2)) {
-    const res = ((Math.trunc((cur - imm)) & sizeMask(size)) >>> 0);
+    const res = ((__ovf((cur - imm), -9223372036854775808, 9223372036854775807) & sizeMask(size)) >>> 0);
     subFlags(cpu, size, cur, imm, res, true);
     eaStore(cpu, m, ea, size, res);
   } else {
     if ((which == 3)) {
-      const res = ((Math.trunc((cur + imm)) & sizeMask(size)) >>> 0);
+      const res = ((__ovf((cur + imm), -9223372036854775808, 9223372036854775807) & sizeMask(size)) >>> 0);
       addFlags(cpu, size, cur, imm, res, true);
       eaStore(cpu, m, ea, size, res);
     } else {
       if ((which == 6)) {
-        const res = ((Math.trunc((cur - imm)) & sizeMask(size)) >>> 0);
+        const res = ((__ovf((cur - imm), -9223372036854775808, 9223372036854775807) & sizeMask(size)) >>> 0);
         subFlags(cpu, size, cur, imm, res, false);
       } else {
         const res = ((applyLogic(which, cur, imm) & sizeMask(size)) >>> 0);
@@ -1887,30 +2011,30 @@ function execImmediate(cpu, m, op) {
 }
 
 function execMovep(cpu, m, op) {
-  const dreg = ((Math.floor(op / 2 ** (9)) & 7) >>> 0);
+  const dreg = ((Math.floor(op / 2 ** (__sh(9, 64))) & 7) >>> 0);
   const areg = ((op & 7) >>> 0);
-  const opmode = ((Math.floor(op / 2 ** (6)) & 7) >>> 0);
+  const opmode = ((Math.floor(op / 2 ** (__sh(6, 64))) & 7) >>> 0);
   const disp = signExtend(fetch16(cpu, m), 1);
-  const addr = ((Math.trunc((cpu.a[areg] + disp)) & 4294967295) >>> 0);
+  const addr = ((__ovf((__idx(cpu.a, areg) + disp), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0);
   const isLong = (((opmode & 1) >>> 0) != 0);
   const toMem = (((opmode & 2) >>> 0) != 0);
   if (toMem) {
-    const d = ((cpu.d[dreg] & 4294967295) >>> 0);
+    const d = ((__idx(cpu.d, dreg) & 4294967295) >>> 0);
     if (isLong) {
-      memWrite8(m, addr, ((Math.floor(d / 2 ** (24)) & 255) >>> 0));
-      memWrite8(m, ((Math.trunc((addr + 2)) & 4294967295) >>> 0), ((Math.floor(d / 2 ** (16)) & 255) >>> 0));
-      memWrite8(m, ((Math.trunc((addr + 4)) & 4294967295) >>> 0), ((Math.floor(d / 2 ** (8)) & 255) >>> 0));
-      memWrite8(m, ((Math.trunc((addr + 6)) & 4294967295) >>> 0), ((d & 255) >>> 0));
+      memWrite8(m, addr, ((Math.floor(d / 2 ** (__sh(24, 64))) & 255) >>> 0));
+      memWrite8(m, ((__ovf((addr + 2), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0), ((Math.floor(d / 2 ** (__sh(16, 64))) & 255) >>> 0));
+      memWrite8(m, ((__ovf((addr + 4), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0), ((Math.floor(d / 2 ** (__sh(8, 64))) & 255) >>> 0));
+      memWrite8(m, ((__ovf((addr + 6), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0), ((d & 255) >>> 0));
     } else {
-      memWrite8(m, addr, ((Math.floor(d / 2 ** (8)) & 255) >>> 0));
-      memWrite8(m, ((Math.trunc((addr + 2)) & 4294967295) >>> 0), ((d & 255) >>> 0));
+      memWrite8(m, addr, ((Math.floor(d / 2 ** (__sh(8, 64))) & 255) >>> 0));
+      memWrite8(m, ((__ovf((addr + 2), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0), ((d & 255) >>> 0));
     }
   } else {
     if (isLong) {
-      const v = ((((((((((memRead8(m, addr) << 24) >>> 0) | ((memRead8(m, ((Math.trunc((addr + 2)) & 4294967295) >>> 0)) << 16) >>> 0)) >>> 0) | ((memRead8(m, ((Math.trunc((addr + 4)) & 4294967295) >>> 0)) << 8) >>> 0)) >>> 0) | memRead8(m, ((Math.trunc((addr + 6)) & 4294967295) >>> 0))) >>> 0) & 4294967295) >>> 0);
-      cpu.d[dreg] = v;
+      const v = ((((((((Math.trunc(memRead8(m, addr) * 2 ** (__sh(24, 64))) | Math.trunc(memRead8(m, ((__ovf((addr + 2), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0)) * 2 ** (__sh(16, 64)))) >>> 0) | Math.trunc(memRead8(m, ((__ovf((addr + 4), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0)) * 2 ** (__sh(8, 64)))) >>> 0) | memRead8(m, ((__ovf((addr + 6), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0))) >>> 0) & 4294967295) >>> 0);
+      __idxSet(cpu.d, dreg, v);
     } else {
-      const v = ((((((memRead8(m, addr) << 8) >>> 0) | memRead8(m, ((Math.trunc((addr + 2)) & 4294967295) >>> 0))) >>> 0) & 65535) >>> 0);
+      const v = ((((Math.trunc(memRead8(m, addr) * 2 ** (__sh(8, 64))) | memRead8(m, ((__ovf((addr + 2), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0))) >>> 0) & 65535) >>> 0);
       setD(cpu, dreg, 1, v);
     }
   }
@@ -1928,28 +2052,28 @@ function applyLogic(which, a, b) {
 }
 
 function execBitOp(cpu, m, op, isStatic) {
-  const mode = ((Math.floor(op / 2 ** (3)) & 7) >>> 0);
+  const mode = ((Math.floor(op / 2 ** (__sh(3, 64))) & 7) >>> 0);
   const reg = ((op & 7) >>> 0);
   let bitNum = 0;
   if (isStatic) {
     bitNum = ((fetch16(cpu, m) & 255) >>> 0);
   } else {
-    bitNum = ((getD(cpu, ((Math.floor(op / 2 ** (9)) & 7) >>> 0), 2) & 255) >>> 0);
+    bitNum = ((getD(cpu, ((Math.floor(op / 2 ** (__sh(9, 64))) & 7) >>> 0), 2) & 255) >>> 0);
   }
-  const opType = ((Math.floor(op / 2 ** (6)) & 3) >>> 0);
+  const opType = ((Math.floor(op / 2 ** (__sh(6, 64))) & 3) >>> 0);
   if ((mode == 0)) {
     const b = ((bitNum & 31) >>> 0);
-    const v = ((cpu.d[reg] & 4294967295) >>> 0);
-    const bit = ((Math.floor(v / 2 ** (b)) & 1) >>> 0);
+    const v = ((__idx(cpu.d, reg) & 4294967295) >>> 0);
+    const bit = ((Math.floor(v / 2 ** (__sh(b, 64))) & 1) >>> 0);
     setBit(cpu, SR_Z, (bit == 0));
     if ((opType == 1)) {
-      cpu.d[reg] = ((v ^ ((1 << b) >>> 0)) >>> 0);
+      __idxSet(cpu.d, reg, ((v ^ Math.trunc(1 * 2 ** (__sh(b, 64)))) >>> 0));
     } else {
       if ((opType == 2)) {
-        cpu.d[reg] = ((v & (~((1 << b) >>> 0))) >>> 0);
+        __idxSet(cpu.d, reg, ((v & (~Math.trunc(1 * 2 ** (__sh(b, 64))))) >>> 0));
       } else {
         if ((opType == 3)) {
-          cpu.d[reg] = ((v | ((1 << b) >>> 0)) >>> 0);
+          __idxSet(cpu.d, reg, ((v | Math.trunc(1 * 2 ** (__sh(b, 64)))) >>> 0));
         }
       }
     }
@@ -1958,16 +2082,16 @@ function execBitOp(cpu, m, op, isStatic) {
   const b = ((bitNum & 7) >>> 0);
   const ea = resolveEa(cpu, m, mode, reg, 0);
   const v = eaLoad(cpu, m, ea, 0);
-  const bit = ((Math.floor(v / 2 ** (b)) & 1) >>> 0);
+  const bit = ((Math.floor(v / 2 ** (__sh(b, 64))) & 1) >>> 0);
   setBit(cpu, SR_Z, (bit == 0));
   if ((opType == 1)) {
-    eaStore(cpu, m, ea, 0, ((v ^ ((1 << b) >>> 0)) >>> 0));
+    eaStore(cpu, m, ea, 0, ((v ^ Math.trunc(1 * 2 ** (__sh(b, 64)))) >>> 0));
   } else {
     if ((opType == 2)) {
-      eaStore(cpu, m, ea, 0, ((v & (~((1 << b) >>> 0))) >>> 0));
+      eaStore(cpu, m, ea, 0, ((v & (~Math.trunc(1 * 2 ** (__sh(b, 64))))) >>> 0));
     } else {
       if ((opType == 3)) {
-        eaStore(cpu, m, ea, 0, ((v | ((1 << b) >>> 0)) >>> 0));
+        eaStore(cpu, m, ea, 0, ((v | Math.trunc(1 * 2 ** (__sh(b, 64)))) >>> 0));
       }
     }
   }
@@ -1975,10 +2099,10 @@ function execBitOp(cpu, m, op, isStatic) {
 }
 
 function execMove(cpu, m, op, size) {
-  const srcMode = ((Math.floor(op / 2 ** (3)) & 7) >>> 0);
+  const srcMode = ((Math.floor(op / 2 ** (__sh(3, 64))) & 7) >>> 0);
   const srcReg = ((op & 7) >>> 0);
-  const dstMode = ((Math.floor(op / 2 ** (6)) & 7) >>> 0);
-  const dstReg = ((Math.floor(op / 2 ** (9)) & 7) >>> 0);
+  const dstMode = ((Math.floor(op / 2 ** (__sh(6, 64))) & 7) >>> 0);
+  const dstReg = ((Math.floor(op / 2 ** (__sh(9, 64))) & 7) >>> 0);
   const srcEa = resolveEa(cpu, m, srcMode, srcReg, size);
   const val = eaLoad(cpu, m, srcEa, size);
   if ((dstMode == 1)) {
@@ -1992,14 +2116,14 @@ function execMove(cpu, m, op, size) {
 }
 
 function execBranch(cpu, m, op) {
-  const cond = ((Math.floor(op / 2 ** (8)) & 15) >>> 0);
+  const cond = ((Math.floor(op / 2 ** (__sh(8, 64))) & 15) >>> 0);
   const disp8 = ((op & 255) >>> 0);
   const base = cpu.pc;
   let disp = signExtend(disp8, 0);
   if ((disp8 == 0)) {
     disp = signExtend(fetch16(cpu, m), 1);
   }
-  const target = ((Math.trunc((base + disp)) & 4294967295) >>> 0);
+  const target = ((__ovf((base + disp), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0);
   if ((cond == 1)) {
     pushLong(cpu, m, cpu.pc);
     setPc(cpu, target);
@@ -2016,21 +2140,21 @@ function execBranch(cpu, m, op) {
 }
 
 function execAddqSubq(cpu, m, op) {
-  const mode = ((Math.floor(op / 2 ** (3)) & 7) >>> 0);
+  const mode = ((Math.floor(op / 2 ** (__sh(3, 64))) & 7) >>> 0);
   const reg = ((op & 7) >>> 0);
-  const size = ((Math.floor(op / 2 ** (6)) & 3) >>> 0);
+  const size = ((Math.floor(op / 2 ** (__sh(6, 64))) & 3) >>> 0);
   if ((size == 3)) {
-    const cond = ((Math.floor(op / 2 ** (8)) & 15) >>> 0);
+    const cond = ((Math.floor(op / 2 ** (__sh(8, 64))) & 15) >>> 0);
     if ((mode == 1)) {
       const base = cpu.pc;
       const disp = signExtend(fetch16(cpu, m), 1);
       if (testCond(cpu, cond)) {
         return true;
       }
-      const cnt = ((Math.trunc((getD(cpu, reg, 1) - 1)) & 65535) >>> 0);
+      const cnt = ((__ovf((getD(cpu, reg, 1) - 1), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
       setD(cpu, reg, 1, cnt);
       if ((cnt != 65535)) {
-        setPc(cpu, Math.trunc((base + disp)));
+        setPc(cpu, __ovf((base + disp), -9223372036854775808, 9223372036854775807));
       }
       return true;
     }
@@ -2045,31 +2169,31 @@ function execAddqSubq(cpu, m, op) {
     eaStore(cpu, m, ea, 0, v);
     return true;
   }
-  let data = ((Math.floor(op / 2 ** (9)) & 7) >>> 0);
+  let data = ((Math.floor(op / 2 ** (__sh(9, 64))) & 7) >>> 0);
   if ((data == 0)) {
     data = 8;
   }
   const isSub = (((op & 256) >>> 0) != 0);
   const ea = resolveEa(cpu, m, mode, reg, size);
   if ((mode == 1)) {
-    const cur = cpu.a[reg];
+    const cur = __idx(cpu.a, reg);
     const res = (() => {
     if (isSub) {
-      return Math.trunc((cur - data));
+      return __ovf((cur - data), -9223372036854775808, 9223372036854775807);
     } else {
-      return Math.trunc((cur + data));
+      return __ovf((cur + data), -9223372036854775808, 9223372036854775807);
     }
     })();
-    cpu.a[reg] = ((res & 4294967295) >>> 0);
+    __idxSet(cpu.a, reg, ((res & 4294967295) >>> 0));
     return true;
   }
   const cur = eaLoad(cpu, m, ea, size);
   if (isSub) {
-    const res = ((Math.trunc((cur - data)) & sizeMask(size)) >>> 0);
+    const res = ((__ovf((cur - data), -9223372036854775808, 9223372036854775807) & sizeMask(size)) >>> 0);
     subFlags(cpu, size, cur, data, res, true);
     eaStore(cpu, m, ea, size, res);
   } else {
-    const res = ((Math.trunc((cur + data)) & sizeMask(size)) >>> 0);
+    const res = ((__ovf((cur + data), -9223372036854775808, 9223372036854775807) & sizeMask(size)) >>> 0);
     addFlags(cpu, size, cur, data, res, true);
     eaStore(cpu, m, ea, size, res);
   }
@@ -2077,9 +2201,9 @@ function execAddqSubq(cpu, m, op) {
 }
 
 function execAddSubX(cpu, m, op, isAdd, size) {
-  const rx = ((Math.floor(op / 2 ** (9)) & 7) >>> 0);
+  const rx = ((Math.floor(op / 2 ** (__sh(9, 64))) & 7) >>> 0);
   const ry = ((op & 7) >>> 0);
-  const mem = (((Math.floor(op / 2 ** (3)) & 7) >>> 0) == 1);
+  const mem = (((Math.floor(op / 2 ** (__sh(3, 64))) & 7) >>> 0) == 1);
   const mask = sizeMask(size);
   const msb = sizeMsb(size);
   const bytes = sizeBytes(size);
@@ -2101,8 +2225,8 @@ function execAddSubX(cpu, m, op, isAdd, size) {
       return bytes;
     }
     })();
-    cpu.a[ry] = ((Math.trunc((cpu.a[ry] - decY)) & 4294967295) >>> 0);
-    b = readSized(m, cpu.a[ry], size);
+    __idxSet(cpu.a, ry, ((__ovf((__idx(cpu.a, ry) - decY), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0));
+    b = readSized(m, __idx(cpu.a, ry), size);
     const decX = (() => {
     if (((size == 0) && (rx == 7))) {
       return 2;
@@ -2110,8 +2234,8 @@ function execAddSubX(cpu, m, op, isAdd, size) {
       return bytes;
     }
     })();
-    cpu.a[rx] = ((Math.trunc((cpu.a[rx] - decX)) & 4294967295) >>> 0);
-    addr = cpu.a[rx];
+    __idxSet(cpu.a, rx, ((__ovf((__idx(cpu.a, rx) - decX), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0));
+    addr = __idx(cpu.a, rx);
     a = readSized(m, addr, size);
   } else {
     a = getD(cpu, rx, size);
@@ -2123,13 +2247,13 @@ function execAddSubX(cpu, m, op, isAdd, size) {
   let carry = false;
   let overflow = false;
   if (isAdd) {
-    const full = Math.trunc((Math.trunc((ua + ub)) + x));
+    const full = __ovf((__ovf((ua + ub), -9223372036854775808, 9223372036854775807) + x), -9223372036854775808, 9223372036854775807);
     res = ((full & mask) >>> 0);
     carry = (full > mask);
     overflow = ((((((~((a ^ b) >>> 0)) & ((a ^ res) >>> 0)) >>> 0) & msb) >>> 0) != 0);
   } else {
-    res = ((Math.trunc((Math.trunc((ua - ub)) - x)) & mask) >>> 0);
-    carry = (Math.trunc((ub + x)) > ua);
+    res = ((__ovf((__ovf((ua - ub), -9223372036854775808, 9223372036854775807) - x), -9223372036854775808, 9223372036854775807) & mask) >>> 0);
+    carry = (__ovf((ub + x), -9223372036854775808, 9223372036854775807) > ua);
     overflow = (((((((a ^ b) >>> 0) & ((a ^ res) >>> 0)) >>> 0) & msb) >>> 0) != 0);
   }
   setBit(cpu, SR_N, (((res & msb) >>> 0) != 0));
@@ -2147,22 +2271,22 @@ function execAddSubX(cpu, m, op, isAdd, size) {
 }
 
 function execExg(cpu, op, opmode, mode) {
-  const rx = ((Math.floor(op / 2 ** (9)) & 7) >>> 0);
+  const rx = ((Math.floor(op / 2 ** (__sh(9, 64))) & 7) >>> 0);
   const ry = ((op & 7) >>> 0);
   if (((opmode == 5) && (mode == 0))) {
-    const t = cpu.d[rx];
-    cpu.d[rx] = cpu.d[ry];
-    cpu.d[ry] = t;
+    const t = __idx(cpu.d, rx);
+    __idxSet(cpu.d, rx, __idx(cpu.d, ry));
+    __idxSet(cpu.d, ry, t);
   } else {
     if (((opmode == 5) && (mode == 1))) {
-      const t = cpu.a[rx];
-      cpu.a[rx] = cpu.a[ry];
-      cpu.a[ry] = t;
+      const t = __idx(cpu.a, rx);
+      __idxSet(cpu.a, rx, __idx(cpu.a, ry));
+      __idxSet(cpu.a, ry, t);
     } else {
       if (((opmode == 6) && (mode == 1))) {
-        const t = cpu.d[rx];
-        cpu.d[rx] = cpu.a[ry];
-        cpu.a[ry] = t;
+        const t = __idx(cpu.d, rx);
+        __idxSet(cpu.d, rx, __idx(cpu.a, ry));
+        __idxSet(cpu.a, ry, t);
       }
     }
   }
@@ -2176,15 +2300,15 @@ function bcdAdd(cpu, srcB, dstB) {
     return 0;
   }
   })();
-  let res = Math.trunc((Math.trunc((((srcB & 15) >>> 0) + ((dstB & 15) >>> 0))) + x));
+  let res = __ovf((__ovf((((srcB & 15) >>> 0) + ((dstB & 15) >>> 0)), -9223372036854775808, 9223372036854775807) + x), -9223372036854775808, 9223372036854775807);
   let v = (((~res) & 4294967295) >>> 0);
   if ((res > 9)) {
-    res = Math.trunc((res + 6));
+    res = __ovf((res + 6), -9223372036854775808, 9223372036854775807);
   }
-  res = Math.trunc((Math.trunc((res + ((srcB & 240) >>> 0))) + ((dstB & 240) >>> 0)));
+  res = __ovf((__ovf((res + ((srcB & 240) >>> 0)), -9223372036854775808, 9223372036854775807) + ((dstB & 240) >>> 0)), -9223372036854775808, 9223372036854775807);
   const c = (res > 153);
   if (c) {
-    res = Math.trunc((res - 160));
+    res = __ovf((res - 160), -9223372036854775808, 9223372036854775807);
   }
   res = ((res & 4294967295) >>> 0);
   v = ((v & res) >>> 0);
@@ -2207,15 +2331,15 @@ function bcdSub(cpu, srcB, dstB) {
     return 0;
   }
   })();
-  let res = ((Math.trunc((Math.trunc((((dstB & 15) >>> 0) - ((srcB & 15) >>> 0))) - x)) & 4294967295) >>> 0);
+  let res = ((__ovf((__ovf((((dstB & 15) >>> 0) - ((srcB & 15) >>> 0)), -9223372036854775808, 9223372036854775807) - x), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0);
   let v = (((~res) & 4294967295) >>> 0);
   if ((res > 9)) {
-    res = ((Math.trunc((res - 6)) & 4294967295) >>> 0);
+    res = ((__ovf((res - 6), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0);
   }
-  res = ((Math.trunc((Math.trunc((res + ((dstB & 240) >>> 0))) - ((srcB & 240) >>> 0))) & 4294967295) >>> 0);
+  res = ((__ovf((__ovf((res + ((dstB & 240) >>> 0)), -9223372036854775808, 9223372036854775807) - ((srcB & 240) >>> 0)), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0);
   const c = (res > 153);
   if (c) {
-    res = ((Math.trunc((res + 160)) & 4294967295) >>> 0);
+    res = ((__ovf((res + 160), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0);
   }
   v = ((v & res) >>> 0);
   const res8 = ((res & 255) >>> 0);
@@ -2230,7 +2354,7 @@ function bcdSub(cpu, srcB, dstB) {
 }
 
 function execBcdRM(cpu, m, op, isSub) {
-  const rx = ((Math.floor(op / 2 ** (9)) & 7) >>> 0);
+  const rx = ((Math.floor(op / 2 ** (__sh(9, 64))) & 7) >>> 0);
   const ry = ((op & 7) >>> 0);
   const mem = (((op & 8) >>> 0) != 0);
   let srcB = 0;
@@ -2244,8 +2368,8 @@ function execBcdRM(cpu, m, op, isSub) {
       return 1;
     }
     })();
-    cpu.a[ry] = ((Math.trunc((cpu.a[ry] - decY)) & 4294967295) >>> 0);
-    srcB = memRead8(m, cpu.a[ry]);
+    __idxSet(cpu.a, ry, ((__ovf((__idx(cpu.a, ry) - decY), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0));
+    srcB = memRead8(m, __idx(cpu.a, ry));
     const decX = (() => {
     if ((rx == 7)) {
       return 2;
@@ -2253,12 +2377,12 @@ function execBcdRM(cpu, m, op, isSub) {
       return 1;
     }
     })();
-    cpu.a[rx] = ((Math.trunc((cpu.a[rx] - decX)) & 4294967295) >>> 0);
-    addr = cpu.a[rx];
+    __idxSet(cpu.a, rx, ((__ovf((__idx(cpu.a, rx) - decX), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0));
+    addr = __idx(cpu.a, rx);
     dstB = memRead8(m, addr);
   } else {
-    srcB = ((cpu.d[ry] & 255) >>> 0);
-    dstB = ((cpu.d[rx] & 255) >>> 0);
+    srcB = ((__idx(cpu.d, ry) & 255) >>> 0);
+    dstB = ((__idx(cpu.d, rx) & 255) >>> 0);
   }
   const res = (() => {
   if (isSub) {
@@ -2297,9 +2421,9 @@ function writeSized(m, addr, size, val) {
 }
 
 function execAddSub(cpu, m, op, isAdd) {
-  const dn = ((Math.floor(op / 2 ** (9)) & 7) >>> 0);
-  const opmode = ((Math.floor(op / 2 ** (6)) & 7) >>> 0);
-  const mode = ((Math.floor(op / 2 ** (3)) & 7) >>> 0);
+  const dn = ((Math.floor(op / 2 ** (__sh(9, 64))) & 7) >>> 0);
+  const opmode = ((Math.floor(op / 2 ** (__sh(6, 64))) & 7) >>> 0);
+  const mode = ((Math.floor(op / 2 ** (__sh(3, 64))) & 7) >>> 0);
   const reg = ((op & 7) >>> 0);
   if (((opmode == 3) || (opmode == 7))) {
     const size = (() => {
@@ -2311,15 +2435,15 @@ function execAddSub(cpu, m, op, isAdd) {
     })();
     const ea = resolveEa(cpu, m, mode, reg, size);
     const src = signExtend(eaLoad(cpu, m, ea, size), size);
-    const cur = cpu.a[dn];
+    const cur = __idx(cpu.a, dn);
     const res = (() => {
     if (isAdd) {
-      return Math.trunc((cur + src));
+      return __ovf((cur + src), -9223372036854775808, 9223372036854775807);
     } else {
-      return Math.trunc((cur - src));
+      return __ovf((cur - src), -9223372036854775808, 9223372036854775807);
     }
     })();
-    cpu.a[dn] = ((res & 4294967295) >>> 0);
+    __idxSet(cpu.a, dn, ((res & 4294967295) >>> 0));
     return true;
   }
   const size = ((opmode & 3) >>> 0);
@@ -2333,11 +2457,11 @@ function execAddSub(cpu, m, op, isAdd) {
     const a = eaLoad(cpu, m, ea, size);
     const b = getD(cpu, dn, size);
     if (isAdd) {
-      const res = ((Math.trunc((a + b)) & sizeMask(size)) >>> 0);
+      const res = ((__ovf((a + b), -9223372036854775808, 9223372036854775807) & sizeMask(size)) >>> 0);
       addFlags(cpu, size, a, b, res, true);
       eaStore(cpu, m, ea, size, res);
     } else {
-      const res = ((Math.trunc((a - b)) & sizeMask(size)) >>> 0);
+      const res = ((__ovf((a - b), -9223372036854775808, 9223372036854775807) & sizeMask(size)) >>> 0);
       subFlags(cpu, size, a, b, res, true);
       eaStore(cpu, m, ea, size, res);
     }
@@ -2345,11 +2469,11 @@ function execAddSub(cpu, m, op, isAdd) {
     const a = getD(cpu, dn, size);
     const b = eaLoad(cpu, m, ea, size);
     if (isAdd) {
-      const res = ((Math.trunc((a + b)) & sizeMask(size)) >>> 0);
+      const res = ((__ovf((a + b), -9223372036854775808, 9223372036854775807) & sizeMask(size)) >>> 0);
       addFlags(cpu, size, a, b, res, true);
       setD(cpu, dn, size, res);
     } else {
-      const res = ((Math.trunc((a - b)) & sizeMask(size)) >>> 0);
+      const res = ((__ovf((a - b), -9223372036854775808, 9223372036854775807) & sizeMask(size)) >>> 0);
       subFlags(cpu, size, a, b, res, true);
       setD(cpu, dn, size, res);
     }
@@ -2358,9 +2482,9 @@ function execAddSub(cpu, m, op, isAdd) {
 }
 
 function execCmpEor(cpu, m, op) {
-  const dn = ((Math.floor(op / 2 ** (9)) & 7) >>> 0);
-  const opmode = ((Math.floor(op / 2 ** (6)) & 7) >>> 0);
-  const mode = ((Math.floor(op / 2 ** (3)) & 7) >>> 0);
+  const dn = ((Math.floor(op / 2 ** (__sh(9, 64))) & 7) >>> 0);
+  const opmode = ((Math.floor(op / 2 ** (__sh(6, 64))) & 7) >>> 0);
+  const mode = ((Math.floor(op / 2 ** (__sh(3, 64))) & 7) >>> 0);
   const reg = ((op & 7) >>> 0);
   if (((opmode == 3) || (opmode == 7))) {
     const size = (() => {
@@ -2372,8 +2496,8 @@ function execCmpEor(cpu, m, op) {
     })();
     const ea = resolveEa(cpu, m, mode, reg, size);
     const src = signExtend(eaLoad(cpu, m, ea, size), size);
-    const a = cpu.a[dn];
-    const res = ((Math.trunc((a - src)) & 4294967295) >>> 0);
+    const a = __idx(cpu.a, dn);
+    const res = ((__ovf((a - src), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0);
     subFlags(cpu, 2, a, src, res, false);
     return true;
   }
@@ -2382,7 +2506,7 @@ function execCmpEor(cpu, m, op) {
     const ea = resolveEa(cpu, m, mode, reg, size);
     const b = eaLoad(cpu, m, ea, size);
     const a = getD(cpu, dn, size);
-    const res = ((Math.trunc((a - b)) & sizeMask(size)) >>> 0);
+    const res = ((__ovf((a - b), -9223372036854775808, 9223372036854775807) & sizeMask(size)) >>> 0);
     subFlags(cpu, size, a, b, res, false);
     return true;
   }
@@ -2391,7 +2515,7 @@ function execCmpEor(cpu, m, op) {
     const ea2 = resolveEa(cpu, m, 3, dn, size);
     const s = eaLoad(cpu, m, ea1, size);
     const d = eaLoad(cpu, m, ea2, size);
-    const res = ((Math.trunc((d - s)) & sizeMask(size)) >>> 0);
+    const res = ((__ovf((d - s), -9223372036854775808, 9223372036854775807) & sizeMask(size)) >>> 0);
     subFlags(cpu, size, d, s, res, false);
     return true;
   }
@@ -2404,9 +2528,9 @@ function execCmpEor(cpu, m, op) {
 }
 
 function execAnd(cpu, m, op) {
-  const dn = ((Math.floor(op / 2 ** (9)) & 7) >>> 0);
-  const opmode = ((Math.floor(op / 2 ** (6)) & 7) >>> 0);
-  const mode = ((Math.floor(op / 2 ** (3)) & 7) >>> 0);
+  const dn = ((Math.floor(op / 2 ** (__sh(9, 64))) & 7) >>> 0);
+  const opmode = ((Math.floor(op / 2 ** (__sh(6, 64))) & 7) >>> 0);
+  const mode = ((Math.floor(op / 2 ** (__sh(3, 64))) & 7) >>> 0);
   const reg = ((op & 7) >>> 0);
   const size = ((opmode & 3) >>> 0);
   if ((((mode == 0) || (mode == 1)) && (((opmode == 4) || (opmode == 5)) || (opmode == 6)))) {
@@ -2422,9 +2546,9 @@ function execAnd(cpu, m, op) {
     const src = ((eaLoad(cpu, m, ea, 1) & 65535) >>> 0);
     let res = 0;
     if ((((opmode & 4) >>> 0) == 0)) {
-      res = Math.trunc((((getD(cpu, dn, 1) & 65535) >>> 0) * src));
+      res = __ovf((((getD(cpu, dn, 1) & 65535) >>> 0) * src), -9223372036854775808, 9223372036854775807);
     } else {
-      res = ((Math.trunc((signExtend(getD(cpu, dn, 1), 1) * signExtend(src, 1))) & 4294967295) >>> 0);
+      res = ((__ovf((signExtend(getD(cpu, dn, 1), 1) * signExtend(src, 1)), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0);
     }
     setD(cpu, dn, 2, ((res & 4294967295) >>> 0));
     setLogicalFlags(cpu, 2, res);
@@ -2444,9 +2568,9 @@ function execAnd(cpu, m, op) {
 }
 
 function execOr(cpu, m, op) {
-  const dn = ((Math.floor(op / 2 ** (9)) & 7) >>> 0);
-  const opmode = ((Math.floor(op / 2 ** (6)) & 7) >>> 0);
-  const mode = ((Math.floor(op / 2 ** (3)) & 7) >>> 0);
+  const dn = ((Math.floor(op / 2 ** (__sh(9, 64))) & 7) >>> 0);
+  const opmode = ((Math.floor(op / 2 ** (__sh(6, 64))) & 7) >>> 0);
+  const mode = ((Math.floor(op / 2 ** (__sh(3, 64))) & 7) >>> 0);
   const reg = ((op & 7) >>> 0);
   const size = ((opmode & 3) >>> 0);
   if ((((mode == 0) || (mode == 1)) && (opmode == 4))) {
@@ -2464,33 +2588,33 @@ function execOr(cpu, m, op) {
       raiseException(cpu, m, 5);
       return true;
     }
-    const dividend = ((cpu.d[dn] & 4294967295) >>> 0);
+    const dividend = ((__idx(cpu.d, dn) & 4294967295) >>> 0);
     if (signed) {
       const dv = signExtend(dividend, 2);
       const ds = signExtend(divisorRaw, 1);
       const q = quotTrunc(dv, ds);
-      const r = Math.trunc((dv - Math.trunc((q * ds))));
-      if (((q > 32767) || (q < (-32768)))) {
+      const r = __ovf((dv - __ovf((q * ds), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807);
+      if (((q > 32767) || (q < __ovf((-32768), -9223372036854775808, 9223372036854775807)))) {
         setBit(cpu, SR_V, true);
         setBit(cpu, SR_C, false);
         return true;
       }
-      const packed = ((((((r & 65535) >>> 0) << 16) >>> 0) | ((q & 65535) >>> 0)) >>> 0);
-      cpu.d[dn] = ((packed & 4294967295) >>> 0);
+      const packed = ((Math.trunc(((r & 65535) >>> 0) * 2 ** (__sh(16, 64))) | ((q & 65535) >>> 0)) >>> 0);
+      __idxSet(cpu.d, dn, ((packed & 4294967295) >>> 0));
       setBit(cpu, SR_N, (((q & 32768) >>> 0) != 0));
       setBit(cpu, SR_Z, (((q & 65535) >>> 0) == 0));
       setBit(cpu, SR_V, false);
       setBit(cpu, SR_C, false);
     } else {
-      const q = Math.trunc(Math.trunc(dividend / divisorRaw));
-      const r = (dividend % divisorRaw);
+      const q = __ovf(__idiv(dividend, divisorRaw), -9223372036854775808, 9223372036854775807);
+      const r = __irem(dividend, divisorRaw);
       if ((q > 65535)) {
         setBit(cpu, SR_V, true);
         setBit(cpu, SR_C, false);
         return true;
       }
-      const packed = ((((((r & 65535) >>> 0) << 16) >>> 0) | ((q & 65535) >>> 0)) >>> 0);
-      cpu.d[dn] = ((packed & 4294967295) >>> 0);
+      const packed = ((Math.trunc(((r & 65535) >>> 0) * 2 ** (__sh(16, 64))) | ((q & 65535) >>> 0)) >>> 0);
+      __idxSet(cpu.d, dn, ((packed & 4294967295) >>> 0));
       setBit(cpu, SR_N, (((q & 32768) >>> 0) != 0));
       setBit(cpu, SR_Z, (((q & 65535) >>> 0) == 0));
       setBit(cpu, SR_V, false);
@@ -2512,7 +2636,7 @@ function execOr(cpu, m, op) {
 }
 
 function quotTrunc(a, b) {
-  return Math.trunc(Math.trunc(a / b));
+  return __ovf(__idiv(a, b), -9223372036854775808, 9223372036854775807);
 }
 
 function execMovem(cpu, m, op) {
@@ -2533,23 +2657,23 @@ function execMovem(cpu, m, op) {
   }
   })();
   const mask = fetch16(cpu, m);
-  const mode = ((Math.floor(op / 2 ** (3)) & 7) >>> 0);
+  const mode = ((Math.floor(op / 2 ** (__sh(3, 64))) & 7) >>> 0);
   const reg = ((op & 7) >>> 0);
   if (((!toReg) && (mode == 4))) {
-    if ((((cpu.a[reg] & 1) >>> 0) != 0)) {
-      checkAlign(cpu, ((Math.trunc((cpu.a[reg] - bytes)) & 4294967295) >>> 0), sz, false, false);
+    if ((((__idx(cpu.a, reg) & 1) >>> 0) != 0)) {
+      checkAlign(cpu, ((__ovf((__idx(cpu.a, reg) - bytes), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0), sz, false, false);
       return true;
     }
-    let addr = ((cpu.a[reg] & 4294967295) >>> 0);
+    let addr = ((__idx(cpu.a, reg) & 4294967295) >>> 0);
     let i = 0;
     while ((i < 16)) {
-      if ((((Math.floor(mask / 2 ** (i)) & 1) >>> 0) != 0)) {
-        addr = ((Math.trunc((addr - bytes)) & 4294967295) >>> 0);
+      if ((((Math.floor(mask / 2 ** (__sh(i, 64))) & 1) >>> 0) != 0)) {
+        addr = ((__ovf((addr - bytes), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0);
         let val = 0;
         if ((i < 8)) {
-          val = cpu.a[Math.trunc((7 - i))];
+          val = __idx(cpu.a, __ovf((7 - i), -9223372036854775808, 9223372036854775807));
         } else {
-          val = cpu.d[Math.trunc((15 - i))];
+          val = __idx(cpu.d, __ovf((15 - i), -9223372036854775808, 9223372036854775807));
         }
         if (long) {
           memWrite32(m, addr, val);
@@ -2557,19 +2681,19 @@ function execMovem(cpu, m, op) {
           memWrite16(m, addr, ((val & 65535) >>> 0));
         }
       }
-      i = Math.trunc((i + 1));
+      i = __ovf((i + 1), -9223372036854775808, 9223372036854775807);
     }
-    cpu.a[reg] = addr;
+    __idxSet(cpu.a, reg, addr);
     return true;
   }
   let addr = 0;
   if ((toReg && (mode == 3))) {
-    addr = ((cpu.a[reg] & 4294967295) >>> 0);
+    addr = ((__idx(cpu.a, reg) & 4294967295) >>> 0);
   } else {
     const ea = resolveEa(cpu, m, mode, reg, sz);
-    const _t3 = ea;
-    if (_t3.tag === 2) {
-      const a = _t3.data[0];
+    const _t21 = ea;
+    if (_t21.tag === 2) {
+      const a = _t21.data[0];
       addr = a;
     } else { // wildcard
       return false;
@@ -2581,7 +2705,7 @@ function execMovem(cpu, m, op) {
   }
   let i = 0;
   while ((i < 16)) {
-    if ((((Math.floor(mask / 2 ** (i)) & 1) >>> 0) != 0)) {
+    if ((((Math.floor(mask / 2 ** (__sh(i, 64))) & 1) >>> 0) != 0)) {
       if (toReg) {
         let v = 0;
         if (long) {
@@ -2590,16 +2714,16 @@ function execMovem(cpu, m, op) {
           v = ((signExtend(memRead16(m, addr), 1) & 4294967295) >>> 0);
         }
         if ((i < 8)) {
-          cpu.d[i] = ((v & 4294967295) >>> 0);
+          __idxSet(cpu.d, i, ((v & 4294967295) >>> 0));
         } else {
-          cpu.a[Math.trunc((i - 8))] = ((v & 4294967295) >>> 0);
+          __idxSet(cpu.a, __ovf((i - 8), -9223372036854775808, 9223372036854775807), ((v & 4294967295) >>> 0));
         }
       } else {
         let val = 0;
         if ((i < 8)) {
-          val = cpu.d[i];
+          val = __idx(cpu.d, i);
         } else {
-          val = cpu.a[Math.trunc((i - 8))];
+          val = __idx(cpu.a, __ovf((i - 8), -9223372036854775808, 9223372036854775807));
         }
         if (long) {
           memWrite32(m, addr, val);
@@ -2607,12 +2731,12 @@ function execMovem(cpu, m, op) {
           memWrite16(m, addr, ((val & 65535) >>> 0));
         }
       }
-      addr = ((Math.trunc((addr + bytes)) & 4294967295) >>> 0);
+      addr = ((__ovf((addr + bytes), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0);
     }
-    i = Math.trunc((i + 1));
+    i = __ovf((i + 1), -9223372036854775808, 9223372036854775807);
   }
   if ((toReg && (mode == 3))) {
-    cpu.a[reg] = ((addr & 4294967295) >>> 0);
+    __idxSet(cpu.a, reg, ((addr & 4294967295) >>> 0));
   }
   return true;
 }
@@ -2657,28 +2781,28 @@ function execMisc(cpu, m, op) {
     return true;
   }
   if ((((op & 65520) >>> 0) == 20032)) {
-    raiseException(cpu, m, Math.trunc((32 + ((op & 15) >>> 0))));
+    raiseException(cpu, m, __ovf((32 + ((op & 15) >>> 0)), -9223372036854775808, 9223372036854775807));
     return true;
   }
-  const mode = ((Math.floor(op / 2 ** (3)) & 7) >>> 0);
+  const mode = ((Math.floor(op / 2 ** (__sh(3, 64))) & 7) >>> 0);
   const reg = ((op & 7) >>> 0);
   if ((((op & 65528) >>> 0) == 20048)) {
     const disp = signExtend(fetch16(cpu, m), 1);
-    pushLong(cpu, m, cpu.a[reg]);
-    cpu.a[reg] = cpu.a[7];
-    cpu.a[7] = ((Math.trunc((cpu.a[7] + disp)) & 4294967295) >>> 0);
+    pushLong(cpu, m, __idx(cpu.a, reg));
+    __idxSet(cpu.a, reg, __idx(cpu.a, 7));
+    __idxSet(cpu.a, 7, ((__ovf((__idx(cpu.a, 7) + disp), -9223372036854775808, 9223372036854775807) & 4294967295) >>> 0));
     return true;
   }
   if ((((op & 65528) >>> 0) == 20056)) {
-    cpu.a[7] = cpu.a[reg];
-    cpu.a[reg] = popLong(cpu, m);
+    __idxSet(cpu.a, 7, __idx(cpu.a, reg));
+    __idxSet(cpu.a, reg, popLong(cpu, m));
     return true;
   }
   if ((((op & 65520) >>> 0) == 20064)) {
     if ((((op & 8) >>> 0) == 0)) {
-      cpu.otherSp = ((cpu.a[reg] & 4294967295) >>> 0);
+      cpu.otherSp = ((__idx(cpu.a, reg) & 4294967295) >>> 0);
     } else {
-      cpu.a[reg] = ((cpu.otherSp & 4294967295) >>> 0);
+      __idxSet(cpu.a, reg, ((cpu.otherSp & 4294967295) >>> 0));
     }
     return true;
   }
@@ -2712,12 +2836,12 @@ function execMisc(cpu, m, op) {
     return true;
   }
   if ((((op & 61888) >>> 0) == 16832)) {
-    const an = ((Math.floor(op / 2 ** (9)) & 7) >>> 0);
+    const an = ((Math.floor(op / 2 ** (__sh(9, 64))) & 7) >>> 0);
     const ea = resolveEa(cpu, m, mode, reg, 2);
-    const _t4 = ea;
-    if (_t4.tag === 2) {
-      const addr = _t4.data[0];
-      cpu.a[an] = ((addr & 4294967295) >>> 0);
+    const _t22 = ea;
+    if (_t22.tag === 2) {
+      const addr = _t22.data[0];
+      __idxSet(cpu.a, an, ((addr & 4294967295) >>> 0));
       return true;
     } else { // wildcard
       return false;
@@ -2731,17 +2855,17 @@ function execMisc(cpu, m, op) {
     return true;
   }
   if ((((op & 65528) >>> 0) == 18496)) {
-    const v = ((cpu.d[reg] & 4294967295) >>> 0);
-    const sw = ((((Math.floor(v / 2 ** (16)) & 65535) >>> 0) | ((((v << 16) >>> 0) & 4294901760) >>> 0)) >>> 0);
-    cpu.d[reg] = sw;
+    const v = ((__idx(cpu.d, reg) & 4294967295) >>> 0);
+    const sw = ((((Math.floor(v / 2 ** (__sh(16, 64))) & 65535) >>> 0) | ((Math.trunc(v * 2 ** (__sh(16, 64))) & 4294901760) >>> 0)) >>> 0);
+    __idxSet(cpu.d, reg, sw);
     setLogicalFlags(cpu, 2, sw);
     return true;
   }
   if ((((op & 65472) >>> 0) == 18496)) {
     const ea = resolveEa(cpu, m, mode, reg, 2);
-    const _t5 = ea;
-    if (_t5.tag === 2) {
-      const addr = _t5.data[0];
+    const _t23 = ea;
+    if (_t23.tag === 2) {
+      const addr = _t23.data[0];
       pushLong(cpu, m, ((addr & 4294967295) >>> 0));
       return true;
     } else { // wildcard
@@ -2751,11 +2875,11 @@ function execMisc(cpu, m, op) {
   if ((((op & 65464) >>> 0) == 18560)) {
     const longMode = (((op & 64) >>> 0) != 0);
     if (longMode) {
-      const v = ((signExtend(cpu.d[reg], 1) & 4294967295) >>> 0);
-      cpu.d[reg] = v;
+      const v = ((signExtend(__idx(cpu.d, reg), 1) & 4294967295) >>> 0);
+      __idxSet(cpu.d, reg, v);
       setLogicalFlags(cpu, 2, v);
     } else {
-      const v = ((signExtend(cpu.d[reg], 0) & 65535) >>> 0);
+      const v = ((signExtend(__idx(cpu.d, reg), 0) & 65535) >>> 0);
       setD(cpu, reg, 1, v);
       setLogicalFlags(cpu, 1, v);
     }
@@ -2764,8 +2888,8 @@ function execMisc(cpu, m, op) {
   if ((((op & 64384) >>> 0) == 18560)) {
     return execMovem(cpu, m, op);
   }
-  const sub = ((Math.floor(op / 2 ** (8)) & 15) >>> 0);
-  const size = ((Math.floor(op / 2 ** (6)) & 3) >>> 0);
+  const sub = ((Math.floor(op / 2 ** (__sh(8, 64))) & 15) >>> 0);
+  const size = ((Math.floor(op / 2 ** (__sh(6, 64))) & 3) >>> 0);
   if (((sub == 2) && (size != 3))) {
     const ea = resolveEa(cpu, m, mode, reg, size);
     eaStore(cpu, m, ea, size, 0);
@@ -2782,7 +2906,7 @@ function execMisc(cpu, m, op) {
   if (((sub == 4) && (size != 3))) {
     const ea = resolveEa(cpu, m, mode, reg, size);
     const v = eaLoad(cpu, m, ea, size);
-    const res = ((Math.trunc((0 - v)) & sizeMask(size)) >>> 0);
+    const res = ((__ovf((-v), -9223372036854775808, 9223372036854775807) & sizeMask(size)) >>> 0);
     subFlags(cpu, size, 0, v, res, true);
     eaStore(cpu, m, ea, size, res);
     return true;
@@ -2796,9 +2920,9 @@ function execMisc(cpu, m, op) {
   if (((((op & 65472) >>> 0) == 20160) || (((op & 65472) >>> 0) == 20096))) {
     const isJsr = (((op & 64) >>> 0) == 0);
     const ea = resolveEa(cpu, m, mode, reg, 2);
-    const _t6 = ea;
-    if (_t6.tag === 2) {
-      const addr = _t6.data[0];
+    const _t24 = ea;
+    if (_t24.tag === 2) {
+      const addr = _t24.data[0];
       if (isJsr) {
         pushLong(cpu, m, cpu.pc);
       }
@@ -2816,30 +2940,30 @@ function newZ80() {
   let i = 0;
   while ((i < 65536)) {
     mem.push(0);
-    i = Math.trunc((i + 1));
+    i = __ovf((i + 1), -9223372036854775808, 9223372036854775807);
   }
   return new Z80(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false, false, 0, 0, false, mem, false, 0, 0, 0, Array.from({length: 512}, () => __clone(0)), 0, Array.from({length: 8}, () => __clone(0)), [false, false, false, false, false, false], [], Array.from({length: 4096}, () => __clone(0)), 0, 0, 0, 0, false, 0, false);
 }
 
 function ymTimerTick(cpu, us) {
   if (cpu.timerARun) {
-    cpu.timerACnt = Math.trunc((cpu.timerACnt + us));
-    const na = ((((((cpu.ym[36] & 255) >>> 0) << 2) >>> 0) | ((cpu.ym[37] & 3) >>> 0)) >>> 0);
-    const periodA = Math.trunc((18 * Math.trunc((1024 - na))));
+    cpu.timerACnt = __ovf((cpu.timerACnt + us), -9223372036854775808, 9223372036854775807);
+    const na = ((Math.trunc(((__idx(cpu.ym, 36) & 255) >>> 0) * 2 ** (__sh(2, 64))) | ((__idx(cpu.ym, 37) & 3) >>> 0)) >>> 0);
+    const periodA = __ovf((18 * __ovf((1024 - na), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807);
     if (((periodA > 0) && (cpu.timerACnt >= periodA))) {
-      cpu.timerACnt = Math.trunc((cpu.timerACnt - periodA));
-      if ((((cpu.ym[39] & 4) >>> 0) != 0)) {
+      cpu.timerACnt = __ovf((cpu.timerACnt - periodA), -9223372036854775808, 9223372036854775807);
+      if ((((__idx(cpu.ym, 39) & 4) >>> 0) != 0)) {
         cpu.ymStatus = ((cpu.ymStatus | 1) >>> 0);
       }
     }
   }
   if (cpu.timerBRun) {
-    cpu.timerBCnt = Math.trunc((cpu.timerBCnt + us));
-    const nb = ((cpu.ym[38] & 255) >>> 0);
-    const periodB = Math.trunc((288 * Math.trunc((256 - nb))));
+    cpu.timerBCnt = __ovf((cpu.timerBCnt + us), -9223372036854775808, 9223372036854775807);
+    const nb = ((__idx(cpu.ym, 38) & 255) >>> 0);
+    const periodB = __ovf((288 * __ovf((256 - nb), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807);
     if (((periodB > 0) && (cpu.timerBCnt >= periodB))) {
-      cpu.timerBCnt = Math.trunc((cpu.timerBCnt - periodB));
-      if ((((cpu.ym[39] & 8) >>> 0) != 0)) {
+      cpu.timerBCnt = __ovf((cpu.timerBCnt - periodB), -9223372036854775808, 9223372036854775807);
+      if ((((__idx(cpu.ym, 39) & 8) >>> 0) != 0)) {
         cpu.ymStatus = ((cpu.ymStatus | 2) >>> 0);
       }
     }
@@ -2850,12 +2974,12 @@ function rd(cpu, addr) {
   const a = ((addr & 65535) >>> 0);
   if (cpu.gen) {
     if ((a < 16384)) {
-      return Math.trunc(cpu.mem[((a & 8191) >>> 0)]);
+      return Math.trunc(__idx(cpu.mem, ((a & 8191) >>> 0)));
     }
     if ((a >= 32768)) {
-      const src = ((((((cpu.bank << 15) >>> 0) | ((a & 32767) >>> 0)) >>> 0) & 16777215) >>> 0);
+      const src = ((((Math.trunc(cpu.bank * 2 ** (__sh(15, 64))) | ((a & 32767) >>> 0)) >>> 0) & 16777215) >>> 0);
       if ((src < cpu.rom.length)) {
-        return Math.trunc(cpu.rom[src]);
+        return Math.trunc(__idx(cpu.rom, src));
       }
       return 0;
     }
@@ -2864,7 +2988,7 @@ function rd(cpu, addr) {
     }
     return 0;
   }
-  return Math.trunc(cpu.mem[a]);
+  return Math.trunc(__idx(cpu.mem, a));
 }
 
 function wr(cpu, addr, val) {
@@ -2873,12 +2997,12 @@ function wr(cpu, addr, val) {
     z80DevWrite(cpu, a, ((val & 255) >>> 0));
     return;
   }
-  cpu.mem[a] = (((val & 255) >>> 0) & 0xFF);
+  __idxSet(cpu.mem, a, (((val & 255) >>> 0) & 0xFF));
 }
 
 function z80DevWrite(cpu, a, val) {
   if ((a < 16384)) {
-    cpu.mem[((a & 8191) >>> 0)] = (val & 0xFF);
+    __idxSet(cpu.mem, ((a & 8191) >>> 0), (val & 0xFF));
     return;
   }
   if ((a == 16384)) {
@@ -2887,10 +3011,10 @@ function z80DevWrite(cpu, a, val) {
   }
   if ((a == 16385)) {
     const reg = ((cpu.ymAddr0 & 255) >>> 0);
-    cpu.ym[reg] = val;
+    __idxSet(cpu.ym, reg, val);
     if ((reg == 42)) {
-      cpu.dac[((cpu.dacW & 4095) >>> 0)] = val;
-      cpu.dacW = Math.trunc((cpu.dacW + 1));
+      __idxSet(cpu.dac, ((cpu.dacW & 4095) >>> 0), val);
+      cpu.dacW = __ovf((cpu.dacW + 1), -9223372036854775808, 9223372036854775807);
     }
     if ((reg == 39)) {
       cpu.timerARun = (((val & 1) >>> 0) != 0);
@@ -2906,10 +3030,10 @@ function z80DevWrite(cpu, a, val) {
       const sel = ((val & 7) >>> 0);
       let ch = sel;
       if ((sel >= 4)) {
-        ch = Math.trunc((sel - 1));
+        ch = __ovf((sel - 1), -9223372036854775808, 9223372036854775807);
       }
       if ((ch < 6)) {
-        cpu.fmKey[ch] = (((val & 240) >>> 0) != 0);
+        __idxSet(cpu.fmKey, ch, (((val & 240) >>> 0) != 0));
       }
     }
     return;
@@ -2919,11 +3043,11 @@ function z80DevWrite(cpu, a, val) {
     return;
   }
   if ((a == 16387)) {
-    cpu.ym[Math.trunc((256 + ((cpu.ymAddr1 & 255) >>> 0)))] = val;
+    __idxSet(cpu.ym, __ovf((256 + ((cpu.ymAddr1 & 255) >>> 0)), -9223372036854775808, 9223372036854775807), val);
     return;
   }
   if ((a == 24576)) {
-    cpu.bank = ((((Math.floor(cpu.bank / 2 ** (1)) | ((((val & 1) >>> 0) << 8) >>> 0)) >>> 0) & 511) >>> 0);
+    cpu.bank = ((((Math.floor(cpu.bank / 2 ** (__sh(1, 64))) | Math.trunc(((val & 1) >>> 0) * 2 ** (__sh(8, 64)))) >>> 0) & 511) >>> 0);
     return;
   }
   if ((a == 32529)) {
@@ -2934,53 +3058,53 @@ function z80DevWrite(cpu, a, val) {
 
 function psgWrite(cpu, val) {
   if ((((val & 128) >>> 0) != 0)) {
-    const reg = ((Math.floor(val / 2 ** (4)) & 7) >>> 0);
+    const reg = ((Math.floor(val / 2 ** (__sh(4, 64))) & 7) >>> 0);
     cpu.psgLatch = reg;
-    cpu.psg[reg] = ((((cpu.psg[reg] & 1008) >>> 0) | ((val & 15) >>> 0)) >>> 0);
+    __idxSet(cpu.psg, reg, ((((__idx(cpu.psg, reg) & 1008) >>> 0) | ((val & 15) >>> 0)) >>> 0));
   } else {
     const reg = cpu.psgLatch;
     if ((((reg & 1) >>> 0) == 0)) {
-      cpu.psg[reg] = ((((cpu.psg[reg] & 15) >>> 0) | ((((val & 63) >>> 0) << 4) >>> 0)) >>> 0);
+      __idxSet(cpu.psg, reg, ((((__idx(cpu.psg, reg) & 15) >>> 0) | Math.trunc(((val & 63) >>> 0) * 2 ** (__sh(4, 64)))) >>> 0));
     } else {
-      cpu.psg[reg] = ((val & 15) >>> 0);
+      __idxSet(cpu.psg, reg, ((val & 15) >>> 0));
     }
   }
 }
 
 function fetchOp(cpu) {
   const op = rd(cpu, cpu.pc);
-  cpu.pc = ((Math.trunc((cpu.pc + 1)) & 65535) >>> 0);
-  cpu.r = ((((cpu.r & 128) >>> 0) | ((Math.trunc((cpu.r + 1)) & 127) >>> 0)) >>> 0);
+  cpu.pc = ((__ovf((cpu.pc + 1), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
+  cpu.r = ((((cpu.r & 128) >>> 0) | ((__ovf((cpu.r + 1), -9223372036854775808, 9223372036854775807) & 127) >>> 0)) >>> 0);
   return op;
 }
 
 function zfetch8(cpu) {
   const v = rd(cpu, cpu.pc);
-  cpu.pc = ((Math.trunc((cpu.pc + 1)) & 65535) >>> 0);
+  cpu.pc = ((__ovf((cpu.pc + 1), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
   return v;
 }
 
 function zfetch16(cpu) {
   const lo = zfetch8(cpu);
   const hi = zfetch8(cpu);
-  return ((((hi << 8) >>> 0) | lo) >>> 0);
+  return ((Math.trunc(hi * 2 ** (__sh(8, 64))) | lo) >>> 0);
 }
 
 function getHL(cpu) {
-  return ((((cpu.h << 8) >>> 0) | cpu.l) >>> 0);
+  return ((Math.trunc(cpu.h * 2 ** (__sh(8, 64))) | cpu.l) >>> 0);
 }
 
 function setHL(cpu, v) {
-  cpu.h = ((Math.floor(v / 2 ** (8)) & 255) >>> 0);
+  cpu.h = ((Math.floor(v / 2 ** (__sh(8, 64))) & 255) >>> 0);
   cpu.l = ((v & 255) >>> 0);
 }
 
 function getBC(cpu) {
-  return ((((cpu.b << 8) >>> 0) | cpu.c) >>> 0);
+  return ((Math.trunc(cpu.b * 2 ** (__sh(8, 64))) | cpu.c) >>> 0);
 }
 
 function getDE(cpu) {
-  return ((((cpu.d << 8) >>> 0) | cpu.e) >>> 0);
+  return ((Math.trunc(cpu.d * 2 ** (__sh(8, 64))) | cpu.e) >>> 0);
 }
 
 function setFlag(cpu, bit, on) {
@@ -2997,10 +3121,10 @@ function parityEven(v) {
   let i = 0;
   while ((i < 8)) {
     if ((((x & 1) >>> 0) != 0)) {
-      count = Math.trunc((count + 1));
+      count = __ovf((count + 1), -9223372036854775808, 9223372036854775807);
     }
-    x = Math.floor(x / 2 ** (1));
-    i = Math.trunc((i + 1));
+    x = Math.floor(x / 2 ** (__sh(1, 64)));
+    i = __ovf((i + 1), -9223372036854775808, 9223372036854775807);
   }
   return (((count & 1) >>> 0) == 0);
 }
@@ -3073,10 +3197,10 @@ function setReg(cpu, idx, val) {
 
 function aluAdd(cpu, val, carry) {
   const a = cpu.a;
-  const r = Math.trunc((Math.trunc((a + val)) + carry));
+  const r = __ovf((__ovf((a + val), -9223372036854775808, 9223372036854775807) + carry), -9223372036854775808, 9223372036854775807);
   const res = ((r & 255) >>> 0);
   setSZYX(cpu, res);
-  setFlag(cpu, FH, (Math.trunc((Math.trunc((((a & 15) >>> 0) + ((val & 15) >>> 0))) + carry)) > 15));
+  setFlag(cpu, FH, (__ovf((__ovf((((a & 15) >>> 0) + ((val & 15) >>> 0)), -9223372036854775808, 9223372036854775807) + carry), -9223372036854775808, 9223372036854775807) > 15));
   setFlag(cpu, FPV, (((((((a ^ (~val)) >>> 0) & ((a ^ res) >>> 0)) >>> 0) & 128) >>> 0) != 0));
   setFlag(cpu, FN, false);
   setFlag(cpu, FC, (r > 255));
@@ -3085,11 +3209,11 @@ function aluAdd(cpu, val, carry) {
 
 function aluSub(cpu, val, carry, store) {
   const a = cpu.a;
-  const r = Math.trunc((Math.trunc((a - val)) - carry));
+  const r = __ovf((__ovf((a - val), -9223372036854775808, 9223372036854775807) - carry), -9223372036854775808, 9223372036854775807);
   const res = ((r & 255) >>> 0);
   setFlag(cpu, FS, (((res & 128) >>> 0) != 0));
   setFlag(cpu, FZ, (res == 0));
-  setFlag(cpu, FH, (Math.trunc((Math.trunc((((a & 15) >>> 0) - ((val & 15) >>> 0))) - carry)) < 0));
+  setFlag(cpu, FH, (__ovf((__ovf((((a & 15) >>> 0) - ((val & 15) >>> 0)), -9223372036854775808, 9223372036854775807) - carry), -9223372036854775808, 9223372036854775807) < 0));
   setFlag(cpu, FPV, (((((((a ^ val) >>> 0) & ((a ^ res) >>> 0)) >>> 0) & 128) >>> 0) != 0));
   setFlag(cpu, FN, true);
   setFlag(cpu, FC, (r < 0));
@@ -3168,7 +3292,7 @@ function doAlu(cpu, op, val) {
 
 function incReg(cpu, idx) {
   const v = getReg(cpu, idx);
-  const res = ((Math.trunc((v + 1)) & 255) >>> 0);
+  const res = ((__ovf((v + 1), -9223372036854775808, 9223372036854775807) & 255) >>> 0);
   setSZYX(cpu, res);
   setFlag(cpu, FH, (((v & 15) >>> 0) == 15));
   setFlag(cpu, FPV, (v == 127));
@@ -3178,7 +3302,7 @@ function incReg(cpu, idx) {
 
 function decReg(cpu, idx) {
   const v = getReg(cpu, idx);
-  const res = ((Math.trunc((v - 1)) & 255) >>> 0);
+  const res = ((__ovf((v - 1), -9223372036854775808, 9223372036854775807) & 255) >>> 0);
   setSZYX(cpu, res);
   setFlag(cpu, FH, (((v & 15) >>> 0) == 0));
   setFlag(cpu, FPV, (v == 128));
@@ -3187,21 +3311,21 @@ function decReg(cpu, idx) {
 }
 
 function getAF(cpu) {
-  return ((((cpu.a << 8) >>> 0) | cpu.f) >>> 0);
+  return ((Math.trunc(cpu.a * 2 ** (__sh(8, 64))) | cpu.f) >>> 0);
 }
 
 function setAF(cpu, v) {
-  cpu.a = ((Math.floor(v / 2 ** (8)) & 255) >>> 0);
+  cpu.a = ((Math.floor(v / 2 ** (__sh(8, 64))) & 255) >>> 0);
   cpu.f = ((v & 255) >>> 0);
 }
 
 function setBC(cpu, v) {
-  cpu.b = ((Math.floor(v / 2 ** (8)) & 255) >>> 0);
+  cpu.b = ((Math.floor(v / 2 ** (__sh(8, 64))) & 255) >>> 0);
   cpu.c = ((v & 255) >>> 0);
 }
 
 function setDE(cpu, v) {
-  cpu.d = ((Math.floor(v / 2 ** (8)) & 255) >>> 0);
+  cpu.d = ((Math.floor(v / 2 ** (__sh(8, 64))) & 255) >>> 0);
   cpu.e = ((v & 255) >>> 0);
 }
 
@@ -3258,8 +3382,8 @@ function z80Interrupt(cpu) {
   cpu.halted = false;
   push16(cpu, cpu.pc);
   if ((cpu.im == 2)) {
-    const vec = ((((((cpu.i << 8) >>> 0) | 255) >>> 0) & 65535) >>> 0);
-    cpu.pc = ((rd(cpu, vec) | ((rd(cpu, ((Math.trunc((vec + 1)) & 65535) >>> 0)) << 8) >>> 0)) >>> 0);
+    const vec = ((((Math.trunc(cpu.i * 2 ** (__sh(8, 64))) | 255) >>> 0) & 65535) >>> 0);
+    cpu.pc = ((rd(cpu, vec) | Math.trunc(rd(cpu, ((__ovf((vec + 1), -9223372036854775808, 9223372036854775807) & 65535) >>> 0)) * 2 ** (__sh(8, 64)))) >>> 0);
   } else {
     cpu.pc = 56;
   }
@@ -3267,18 +3391,18 @@ function z80Interrupt(cpu) {
 }
 
 function push16(cpu, v) {
-  cpu.sp = ((Math.trunc((cpu.sp - 1)) & 65535) >>> 0);
-  wr(cpu, cpu.sp, ((Math.floor(v / 2 ** (8)) & 255) >>> 0));
-  cpu.sp = ((Math.trunc((cpu.sp - 1)) & 65535) >>> 0);
+  cpu.sp = ((__ovf((cpu.sp - 1), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
+  wr(cpu, cpu.sp, ((Math.floor(v / 2 ** (__sh(8, 64))) & 255) >>> 0));
+  cpu.sp = ((__ovf((cpu.sp - 1), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
   wr(cpu, cpu.sp, ((v & 255) >>> 0));
 }
 
 function pop16(cpu) {
   const lo = rd(cpu, cpu.sp);
-  cpu.sp = ((Math.trunc((cpu.sp + 1)) & 65535) >>> 0);
+  cpu.sp = ((__ovf((cpu.sp + 1), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
   const hi = rd(cpu, cpu.sp);
-  cpu.sp = ((Math.trunc((cpu.sp + 1)) & 65535) >>> 0);
-  return ((((hi << 8) >>> 0) | lo) >>> 0);
+  cpu.sp = ((__ovf((cpu.sp + 1), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
+  return ((Math.trunc(hi * 2 ** (__sh(8, 64))) | lo) >>> 0);
 }
 
 function testCC(cpu, y) {
@@ -3307,9 +3431,9 @@ function testCC(cpu, y) {
 }
 
 function add16(cpu, a, b) {
-  const r = Math.trunc((a + b));
+  const r = __ovf((a + b), -9223372036854775808, 9223372036854775807);
   const res = ((r & 65535) >>> 0);
-  setFlag(cpu, FH, (Math.trunc((((a & 4095) >>> 0) + ((b & 4095) >>> 0))) > 4095));
+  setFlag(cpu, FH, (__ovf((((a & 4095) >>> 0) + ((b & 4095) >>> 0)), -9223372036854775808, 9223372036854775807) > 4095));
   setFlag(cpu, FC, (r > 65535));
   setFlag(cpu, FN, false);
   setFlag(cpu, FY, (((res & 8192) >>> 0) != 0));
@@ -3323,7 +3447,7 @@ function rotAcc(cpu, kind) {
   let carry = false;
   if ((kind == 0)) {
     carry = (((a & 128) >>> 0) != 0);
-    res = ((((((a << 1) >>> 0) | (() => {
+    res = ((((Math.trunc(a * 2 ** (__sh(1, 64))) | (() => {
     if (carry) {
       return 1;
     } else {
@@ -3333,7 +3457,7 @@ function rotAcc(cpu, kind) {
   } else {
     if ((kind == 1)) {
       carry = (((a & 1) >>> 0) != 0);
-      res = ((((Math.floor(a / 2 ** (1)) | (() => {
+      res = ((((Math.floor(a / 2 ** (__sh(1, 64))) | (() => {
       if (carry) {
         return 128;
       } else {
@@ -3344,7 +3468,7 @@ function rotAcc(cpu, kind) {
       if ((kind == 2)) {
         const cin = (((cpu.f & FC) >>> 0) != 0);
         carry = (((a & 128) >>> 0) != 0);
-        res = ((((((a << 1) >>> 0) | (() => {
+        res = ((((Math.trunc(a * 2 ** (__sh(1, 64))) | (() => {
         if (cin) {
           return 1;
         } else {
@@ -3354,7 +3478,7 @@ function rotAcc(cpu, kind) {
       } else {
         const cin = (((cpu.f & FC) >>> 0) != 0);
         carry = (((a & 1) >>> 0) != 0);
-        res = ((((Math.floor(a / 2 ** (1)) | (() => {
+        res = ((((Math.floor(a / 2 ** (__sh(1, 64))) | (() => {
         if (cin) {
           return 128;
         } else {
@@ -3385,9 +3509,9 @@ function doDaa(cpu) {
     carry = true;
   }
   if (n) {
-    a = ((Math.trunc((a - adjust)) & 255) >>> 0);
+    a = ((__ovf((a - adjust), -9223372036854775808, 9223372036854775807) & 255) >>> 0);
   } else {
-    a = ((Math.trunc((a + adjust)) & 255) >>> 0);
+    a = ((__ovf((a + adjust), -9223372036854775808, 9223372036854775807) & 255) >>> 0);
   }
   setFlag(cpu, FH, (((((cpu.a ^ a) >>> 0) & 16) >>> 0) != 0));
   cpu.a = a;
@@ -3402,10 +3526,10 @@ function stepZ80(cpu) {
     return true;
   }
   const op = fetchOp(cpu);
-  const x = ((Math.floor(op / 2 ** (6)) & 3) >>> 0);
-  const y = ((Math.floor(op / 2 ** (3)) & 7) >>> 0);
+  const x = ((Math.floor(op / 2 ** (__sh(6, 64))) & 3) >>> 0);
+  const y = ((Math.floor(op / 2 ** (__sh(3, 64))) & 7) >>> 0);
   const z = ((op & 7) >>> 0);
-  const p = Math.floor(y / 2 ** (1));
+  const p = Math.floor(y / 2 ** (__sh(1, 64)));
   const q = ((y & 1) >>> 0);
   if ((op == 118)) {
     cpu.halted = true;
@@ -3450,18 +3574,18 @@ function execX0(cpu, _op, y, z, p, q) {
     }
     const d = signExt8(zfetch8(cpu));
     if ((y == 2)) {
-      cpu.b = ((Math.trunc((cpu.b - 1)) & 255) >>> 0);
+      cpu.b = ((__ovf((cpu.b - 1), -9223372036854775808, 9223372036854775807) & 255) >>> 0);
       if ((cpu.b != 0)) {
-        cpu.pc = ((Math.trunc((cpu.pc + d)) & 65535) >>> 0);
+        cpu.pc = ((__ovf((cpu.pc + d), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
       }
       return true;
     }
     if ((y == 3)) {
-      cpu.pc = ((Math.trunc((cpu.pc + d)) & 65535) >>> 0);
+      cpu.pc = ((__ovf((cpu.pc + d), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
       return true;
     }
-    if (testCC(cpu, Math.trunc((y - 4)))) {
-      cpu.pc = ((Math.trunc((cpu.pc + d)) & 65535) >>> 0);
+    if (testCC(cpu, __ovf((y - 4), -9223372036854775808, 9223372036854775807))) {
+      cpu.pc = ((__ovf((cpu.pc + d), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
     }
     return true;
   }
@@ -3478,9 +3602,9 @@ function execX0(cpu, _op, y, z, p, q) {
   }
   if ((z == 3)) {
     if ((q == 0)) {
-      setRP(cpu, p, ((Math.trunc((getRP(cpu, p) + 1)) & 65535) >>> 0));
+      setRP(cpu, p, ((__ovf((getRP(cpu, p) + 1), -9223372036854775808, 9223372036854775807) & 65535) >>> 0));
     } else {
-      setRP(cpu, p, ((Math.trunc((getRP(cpu, p) - 1)) & 65535) >>> 0));
+      setRP(cpu, p, ((__ovf((getRP(cpu, p) - 1), -9223372036854775808, 9223372036854775807) & 65535) >>> 0));
     }
     return true;
   }
@@ -3540,7 +3664,7 @@ function execIndirect(cpu, p, q) {
         if ((p == 2)) {
           const nn = zfetch16(cpu);
           wr(cpu, nn, cpu.l);
-          wr(cpu, Math.trunc((nn + 1)), cpu.h);
+          wr(cpu, __ovf((nn + 1), -9223372036854775808, 9223372036854775807), cpu.h);
         } else {
           wr(cpu, zfetch16(cpu), cpu.a);
         }
@@ -3556,7 +3680,7 @@ function execIndirect(cpu, p, q) {
         if ((p == 2)) {
           const nn = zfetch16(cpu);
           cpu.l = rd(cpu, nn);
-          cpu.h = rd(cpu, Math.trunc((nn + 1)));
+          cpu.h = rd(cpu, __ovf((nn + 1), -9223372036854775808, 9223372036854775807));
         } else {
           cpu.a = rd(cpu, zfetch16(cpu));
         }
@@ -3615,9 +3739,9 @@ function execX3(cpu, _op, y, z, p, q) {
     }
     if ((y == 4)) {
       const lo = rd(cpu, cpu.sp);
-      const hi = rd(cpu, Math.trunc((cpu.sp + 1)));
+      const hi = rd(cpu, __ovf((cpu.sp + 1), -9223372036854775808, 9223372036854775807));
       wr(cpu, cpu.sp, cpu.l);
-      wr(cpu, Math.trunc((cpu.sp + 1)), cpu.h);
+      wr(cpu, __ovf((cpu.sp + 1), -9223372036854775808, 9223372036854775807), cpu.h);
       cpu.l = lo;
       cpu.h = hi;
       return true;
@@ -3666,19 +3790,19 @@ function execX3(cpu, _op, y, z, p, q) {
     return true;
   }
   push16(cpu, cpu.pc);
-  cpu.pc = Math.trunc((y * 8));
+  cpu.pc = __ovf((y * 8), -9223372036854775808, 9223372036854775807);
   return true;
 }
 
 function signExt8(v) {
   if ((((v & 128) >>> 0) != 0)) {
-    return Math.trunc((v - 256));
+    return __ovf((v - 256), -9223372036854775808, 9223372036854775807);
   }
   return v;
 }
 
 function incVal(cpu, v) {
-  const res = ((Math.trunc((v + 1)) & 255) >>> 0);
+  const res = ((__ovf((v + 1), -9223372036854775808, 9223372036854775807) & 255) >>> 0);
   setSZYX(cpu, res);
   setFlag(cpu, FH, (((v & 15) >>> 0) == 15));
   setFlag(cpu, FPV, (v == 127));
@@ -3687,7 +3811,7 @@ function incVal(cpu, v) {
 }
 
 function decVal(cpu, v) {
-  const res = ((Math.trunc((v - 1)) & 255) >>> 0);
+  const res = ((__ovf((v - 1), -9223372036854775808, 9223372036854775807) & 255) >>> 0);
   setSZYX(cpu, res);
   setFlag(cpu, FH, (((v & 15) >>> 0) == 0));
   setFlag(cpu, FPV, (v == 128));
@@ -3706,11 +3830,11 @@ function execIndex(cpu, isIY) {
   const op = fetchOp(cpu);
   if ((op == 203)) {
     const d = signExt8(zfetch8(cpu));
-    const addr = ((Math.trunc((base + d)) & 65535) >>> 0);
+    const addr = ((__ovf((base + d), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
     return execDDCB(cpu, addr);
   }
   if (((((op == 9) || (op == 25)) || (op == 41)) || (op == 57))) {
-    const p = ((Math.floor(op / 2 ** (4)) & 3) >>> 0);
+    const p = ((Math.floor(op / 2 ** (__sh(4, 64))) & 3) >>> 0);
     let rp = getRP(cpu, p);
     if ((p == 2)) {
       rp = base;
@@ -3725,20 +3849,20 @@ function execIndex(cpu, isIY) {
   if ((op == 34)) {
     const nn = zfetch16(cpu);
     wr(cpu, nn, ((base & 255) >>> 0));
-    wr(cpu, Math.trunc((nn + 1)), ((Math.floor(base / 2 ** (8)) & 255) >>> 0));
+    wr(cpu, __ovf((nn + 1), -9223372036854775808, 9223372036854775807), ((Math.floor(base / 2 ** (__sh(8, 64))) & 255) >>> 0));
     return true;
   }
   if ((op == 42)) {
     const nn = zfetch16(cpu);
-    base = ((rd(cpu, nn) | ((rd(cpu, Math.trunc((nn + 1))) << 8) >>> 0)) >>> 0);
+    base = ((rd(cpu, nn) | Math.trunc(rd(cpu, __ovf((nn + 1), -9223372036854775808, 9223372036854775807)) * 2 ** (__sh(8, 64)))) >>> 0);
     return storeIndex(cpu, isIY, base);
   }
   if ((op == 35)) {
-    base = ((Math.trunc((base + 1)) & 65535) >>> 0);
+    base = ((__ovf((base + 1), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
     return storeIndex(cpu, isIY, base);
   }
   if ((op == 43)) {
-    base = ((Math.trunc((base - 1)) & 65535) >>> 0);
+    base = ((__ovf((base - 1), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
     return storeIndex(cpu, isIY, base);
   }
   if ((op == 229)) {
@@ -3751,10 +3875,10 @@ function execIndex(cpu, isIY) {
   }
   if ((op == 227)) {
     const lo = rd(cpu, cpu.sp);
-    const hi = rd(cpu, Math.trunc((cpu.sp + 1)));
+    const hi = rd(cpu, __ovf((cpu.sp + 1), -9223372036854775808, 9223372036854775807));
     wr(cpu, cpu.sp, ((base & 255) >>> 0));
-    wr(cpu, Math.trunc((cpu.sp + 1)), ((Math.floor(base / 2 ** (8)) & 255) >>> 0));
-    base = ((((hi << 8) >>> 0) | lo) >>> 0);
+    wr(cpu, __ovf((cpu.sp + 1), -9223372036854775808, 9223372036854775807), ((Math.floor(base / 2 ** (__sh(8, 64))) & 255) >>> 0));
+    base = ((Math.trunc(hi * 2 ** (__sh(8, 64))) | lo) >>> 0);
     return storeIndex(cpu, isIY, base);
   }
   if ((op == 233)) {
@@ -3767,28 +3891,28 @@ function execIndex(cpu, isIY) {
   }
   if ((op == 52)) {
     const d = signExt8(zfetch8(cpu));
-    const a = ((Math.trunc((base + d)) & 65535) >>> 0);
+    const a = ((__ovf((base + d), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
     wr(cpu, a, incVal(cpu, rd(cpu, a)));
     return true;
   }
   if ((op == 53)) {
     const d = signExt8(zfetch8(cpu));
-    const a = ((Math.trunc((base + d)) & 65535) >>> 0);
+    const a = ((__ovf((base + d), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
     wr(cpu, a, decVal(cpu, rd(cpu, a)));
     return true;
   }
   if ((op == 54)) {
     const d = signExt8(zfetch8(cpu));
     const n = zfetch8(cpu);
-    wr(cpu, ((Math.trunc((base + d)) & 65535) >>> 0), n);
+    wr(cpu, ((__ovf((base + d), -9223372036854775808, 9223372036854775807) & 65535) >>> 0), n);
     return true;
   }
-  const x = ((Math.floor(op / 2 ** (6)) & 3) >>> 0);
-  const y = ((Math.floor(op / 2 ** (3)) & 7) >>> 0);
+  const x = ((Math.floor(op / 2 ** (__sh(6, 64))) & 3) >>> 0);
+  const y = ((Math.floor(op / 2 ** (__sh(3, 64))) & 7) >>> 0);
   const z = ((op & 7) >>> 0);
   if ((((x == 1) && (op != 118)) && ((y == 6) || (z == 6)))) {
     const d = signExt8(zfetch8(cpu));
-    const a = ((Math.trunc((base + d)) & 65535) >>> 0);
+    const a = ((__ovf((base + d), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
     if ((z == 6)) {
       setReg(cpu, y, rd(cpu, a));
     } else {
@@ -3798,7 +3922,7 @@ function execIndex(cpu, isIY) {
   }
   if (((x == 2) && (z == 6))) {
     const d = signExt8(zfetch8(cpu));
-    doAlu(cpu, y, rd(cpu, ((Math.trunc((base + d)) & 65535) >>> 0)));
+    doAlu(cpu, y, rd(cpu, ((__ovf((base + d), -9223372036854775808, 9223372036854775807) & 65535) >>> 0)));
     return true;
   }
   return false;
@@ -3815,19 +3939,19 @@ function storeIndex(cpu, isIY, v) {
 
 function execDDCB(cpu, addr) {
   const op = zfetch8(cpu);
-  const x = ((Math.floor(op / 2 ** (6)) & 3) >>> 0);
-  const y = ((Math.floor(op / 2 ** (3)) & 7) >>> 0);
+  const x = ((Math.floor(op / 2 ** (__sh(6, 64))) & 3) >>> 0);
+  const y = ((Math.floor(op / 2 ** (__sh(3, 64))) & 7) >>> 0);
   const z = ((op & 7) >>> 0);
   const v = rd(cpu, addr);
   if ((x == 1)) {
-    const bitset = (((Math.floor(v / 2 ** (y)) & 1) >>> 0) != 0);
+    const bitset = (((Math.floor(v / 2 ** (__sh(y, 64))) & 1) >>> 0) != 0);
     setFlag(cpu, FZ, (!bitset));
     setFlag(cpu, FPV, (!bitset));
     setFlag(cpu, FH, true);
     setFlag(cpu, FN, false);
     setFlag(cpu, FS, ((y == 7) && bitset));
-    setFlag(cpu, FY, (((Math.floor(addr / 2 ** (8)) & 32) >>> 0) != 0));
-    setFlag(cpu, FX, (((Math.floor(addr / 2 ** (8)) & 8) >>> 0) != 0));
+    setFlag(cpu, FY, (((Math.floor(addr / 2 ** (__sh(8, 64))) & 32) >>> 0) != 0));
+    setFlag(cpu, FX, (((Math.floor(addr / 2 ** (__sh(8, 64))) & 8) >>> 0) != 0));
     return true;
   }
   let res = 0;
@@ -3835,9 +3959,9 @@ function execDDCB(cpu, addr) {
     res = shiftOp(cpu, y, v);
   } else {
     if ((x == 2)) {
-      res = ((v & (~((1 << y) >>> 0))) >>> 0);
+      res = ((v & (~Math.trunc(1 * 2 ** (__sh(y, 64))))) >>> 0);
     } else {
-      res = ((v | ((1 << y) >>> 0)) >>> 0);
+      res = ((v | Math.trunc(1 * 2 ** (__sh(y, 64)))) >>> 0);
     }
   }
   wr(cpu, addr, res);
@@ -3849,8 +3973,8 @@ function execDDCB(cpu, addr) {
 
 function execCB(cpu) {
   const op = fetchOp(cpu);
-  const x = ((Math.floor(op / 2 ** (6)) & 3) >>> 0);
-  const y = ((Math.floor(op / 2 ** (3)) & 7) >>> 0);
+  const x = ((Math.floor(op / 2 ** (__sh(6, 64))) & 3) >>> 0);
+  const y = ((Math.floor(op / 2 ** (__sh(3, 64))) & 7) >>> 0);
   const z = ((op & 7) >>> 0);
   if ((x == 0)) {
     const v = getReg(cpu, z);
@@ -3860,15 +3984,15 @@ function execCB(cpu) {
   }
   if ((x == 1)) {
     const v = getReg(cpu, z);
-    const bitset = (((Math.floor(v / 2 ** (y)) & 1) >>> 0) != 0);
+    const bitset = (((Math.floor(v / 2 ** (__sh(y, 64))) & 1) >>> 0) != 0);
     setFlag(cpu, FZ, (!bitset));
     setFlag(cpu, FPV, (!bitset));
     setFlag(cpu, FH, true);
     setFlag(cpu, FN, false);
     setFlag(cpu, FS, ((y == 7) && bitset));
     if ((z == 6)) {
-      setFlag(cpu, FY, (((Math.floor(cpu.wz / 2 ** (8)) & 32) >>> 0) != 0));
-      setFlag(cpu, FX, (((Math.floor(cpu.wz / 2 ** (8)) & 8) >>> 0) != 0));
+      setFlag(cpu, FY, (((Math.floor(cpu.wz / 2 ** (__sh(8, 64))) & 32) >>> 0) != 0));
+      setFlag(cpu, FX, (((Math.floor(cpu.wz / 2 ** (__sh(8, 64))) & 8) >>> 0) != 0));
     } else {
       setFlag(cpu, FY, (((v & 32) >>> 0) != 0));
       setFlag(cpu, FX, (((v & 8) >>> 0) != 0));
@@ -3876,21 +4000,21 @@ function execCB(cpu) {
     return true;
   }
   if ((x == 2)) {
-    setReg(cpu, z, ((getReg(cpu, z) & (~((1 << y) >>> 0))) >>> 0));
+    setReg(cpu, z, ((getReg(cpu, z) & (~Math.trunc(1 * 2 ** (__sh(y, 64))))) >>> 0));
     return true;
   }
-  setReg(cpu, z, ((getReg(cpu, z) | ((1 << y) >>> 0)) >>> 0));
+  setReg(cpu, z, ((getReg(cpu, z) | Math.trunc(1 * 2 ** (__sh(y, 64)))) >>> 0));
   return true;
 }
 
 function adcHL(cpu, rp) {
   const hl = getHL(cpu);
   const c = ((cpu.f & FC) >>> 0);
-  const r = Math.trunc((Math.trunc((hl + rp)) + c));
+  const r = __ovf((__ovf((hl + rp), -9223372036854775808, 9223372036854775807) + c), -9223372036854775808, 9223372036854775807);
   const res = ((r & 65535) >>> 0);
   setFlag(cpu, FS, (((res & 32768) >>> 0) != 0));
   setFlag(cpu, FZ, (res == 0));
-  setFlag(cpu, FH, (Math.trunc((Math.trunc((((hl & 4095) >>> 0) + ((rp & 4095) >>> 0))) + c)) > 4095));
+  setFlag(cpu, FH, (__ovf((__ovf((((hl & 4095) >>> 0) + ((rp & 4095) >>> 0)), -9223372036854775808, 9223372036854775807) + c), -9223372036854775808, 9223372036854775807) > 4095));
   setFlag(cpu, FPV, ((((((~((hl ^ rp) >>> 0)) & ((hl ^ res) >>> 0)) >>> 0) & 32768) >>> 0) != 0));
   setFlag(cpu, FN, false);
   setFlag(cpu, FC, (r > 65535));
@@ -3902,11 +4026,11 @@ function adcHL(cpu, rp) {
 function sbcHL(cpu, rp) {
   const hl = getHL(cpu);
   const c = ((cpu.f & FC) >>> 0);
-  const r = Math.trunc((Math.trunc((hl - rp)) - c));
+  const r = __ovf((__ovf((hl - rp), -9223372036854775808, 9223372036854775807) - c), -9223372036854775808, 9223372036854775807);
   const res = ((r & 65535) >>> 0);
   setFlag(cpu, FS, (((res & 32768) >>> 0) != 0));
   setFlag(cpu, FZ, (res == 0));
-  setFlag(cpu, FH, (Math.trunc((Math.trunc((((hl & 4095) >>> 0) - ((rp & 4095) >>> 0))) - c)) < 0));
+  setFlag(cpu, FH, (__ovf((__ovf((((hl & 4095) >>> 0) - ((rp & 4095) >>> 0)), -9223372036854775808, 9223372036854775807) - c), -9223372036854775808, 9223372036854775807) < 0));
   setFlag(cpu, FPV, (((((((hl ^ rp) >>> 0) & ((hl ^ res) >>> 0)) >>> 0) & 32768) >>> 0) != 0));
   setFlag(cpu, FN, true);
   setFlag(cpu, FC, (r < 0));
@@ -3918,10 +4042,10 @@ function sbcHL(cpu, rp) {
 function blockLd(cpu, dir) {
   const v = rd(cpu, getHL(cpu));
   wr(cpu, getDE(cpu), v);
-  setDE(cpu, ((Math.trunc((getDE(cpu) + dir)) & 65535) >>> 0));
-  setHL(cpu, ((Math.trunc((getHL(cpu) + dir)) & 65535) >>> 0));
-  setBC(cpu, ((Math.trunc((getBC(cpu) - 1)) & 65535) >>> 0));
-  const n = ((Math.trunc((v + cpu.a)) & 255) >>> 0);
+  setDE(cpu, ((__ovf((getDE(cpu) + dir), -9223372036854775808, 9223372036854775807) & 65535) >>> 0));
+  setHL(cpu, ((__ovf((getHL(cpu) + dir), -9223372036854775808, 9223372036854775807) & 65535) >>> 0));
+  setBC(cpu, ((__ovf((getBC(cpu) - 1), -9223372036854775808, 9223372036854775807) & 65535) >>> 0));
+  const n = ((__ovf((v + cpu.a), -9223372036854775808, 9223372036854775807) & 255) >>> 0);
   setFlag(cpu, FH, false);
   setFlag(cpu, FN, false);
   setFlag(cpu, FPV, (getBC(cpu) != 0));
@@ -3931,10 +4055,10 @@ function blockLd(cpu, dir) {
 
 function blockCp(cpu, dir) {
   const v = rd(cpu, getHL(cpu));
-  const r = ((Math.trunc((cpu.a - v)) & 255) >>> 0);
-  const hcarry = (Math.trunc((((cpu.a & 15) >>> 0) - ((v & 15) >>> 0))) < 0);
-  setHL(cpu, ((Math.trunc((getHL(cpu) + dir)) & 65535) >>> 0));
-  setBC(cpu, ((Math.trunc((getBC(cpu) - 1)) & 65535) >>> 0));
+  const r = ((__ovf((cpu.a - v), -9223372036854775808, 9223372036854775807) & 255) >>> 0);
+  const hcarry = (__ovf((((cpu.a & 15) >>> 0) - ((v & 15) >>> 0)), -9223372036854775808, 9223372036854775807) < 0);
+  setHL(cpu, ((__ovf((getHL(cpu) + dir), -9223372036854775808, 9223372036854775807) & 65535) >>> 0));
+  setBC(cpu, ((__ovf((getBC(cpu) - 1), -9223372036854775808, 9223372036854775807) & 65535) >>> 0));
   setFlag(cpu, FS, (((r & 128) >>> 0) != 0));
   setFlag(cpu, FZ, (r == 0));
   setFlag(cpu, FH, hcarry);
@@ -3944,17 +4068,17 @@ function blockCp(cpu, dir) {
   if (hcarry) {
     hb = 1;
   }
-  const n = ((Math.trunc((r - hb)) & 255) >>> 0);
+  const n = ((__ovf((r - hb), -9223372036854775808, 9223372036854775807) & 255) >>> 0);
   setFlag(cpu, FY, (((n & 2) >>> 0) != 0));
   setFlag(cpu, FX, (((n & 8) >>> 0) != 0));
 }
 
 function execED(cpu) {
   const op = fetchOp(cpu);
-  const x = ((Math.floor(op / 2 ** (6)) & 3) >>> 0);
-  const y = ((Math.floor(op / 2 ** (3)) & 7) >>> 0);
+  const x = ((Math.floor(op / 2 ** (__sh(6, 64))) & 3) >>> 0);
+  const y = ((Math.floor(op / 2 ** (__sh(3, 64))) & 7) >>> 0);
   const z = ((op & 7) >>> 0);
-  const p = Math.floor(y / 2 ** (1));
+  const p = Math.floor(y / 2 ** (__sh(1, 64)));
   const q = ((y & 1) >>> 0);
   if ((x == 1)) {
     if ((z == 2)) {
@@ -3970,17 +4094,17 @@ function execED(cpu) {
       if ((q == 0)) {
         const v = getRP(cpu, p);
         wr(cpu, nn, ((v & 255) >>> 0));
-        wr(cpu, Math.trunc((nn + 1)), ((Math.floor(v / 2 ** (8)) & 255) >>> 0));
+        wr(cpu, __ovf((nn + 1), -9223372036854775808, 9223372036854775807), ((Math.floor(v / 2 ** (__sh(8, 64))) & 255) >>> 0));
       } else {
         const lo = rd(cpu, nn);
-        const hi = rd(cpu, Math.trunc((nn + 1)));
-        setRP(cpu, p, ((((hi << 8) >>> 0) | lo) >>> 0));
+        const hi = rd(cpu, __ovf((nn + 1), -9223372036854775808, 9223372036854775807));
+        setRP(cpu, p, ((Math.trunc(hi * 2 ** (__sh(8, 64))) | lo) >>> 0));
       }
       return true;
     }
     if ((z == 4)) {
       const a = cpu.a;
-      cpu.a = ((Math.trunc((0 - a)) & 255) >>> 0);
+      cpu.a = ((__ovf((-a), -9223372036854775808, 9223372036854775807) & 255) >>> 0);
       setSZYX(cpu, cpu.a);
       setFlag(cpu, FH, (((a & 15) >>> 0) != 0));
       setFlag(cpu, FPV, (a == 128));
@@ -4030,7 +4154,7 @@ function execED(cpu) {
           } else {
             if ((y == 4)) {
               const m = rd(cpu, getHL(cpu));
-              const newM = ((((Math.floor(m / 2 ** (4)) | ((((cpu.a & 15) >>> 0) << 4) >>> 0)) >>> 0) & 255) >>> 0);
+              const newM = ((((Math.floor(m / 2 ** (__sh(4, 64))) | Math.trunc(((cpu.a & 15) >>> 0) * 2 ** (__sh(4, 64)))) >>> 0) & 255) >>> 0);
               cpu.a = ((((cpu.a & 240) >>> 0) | ((m & 15) >>> 0)) >>> 0);
               wr(cpu, getHL(cpu), newM);
               setSZYX(cpu, cpu.a);
@@ -4040,8 +4164,8 @@ function execED(cpu) {
             } else {
               if ((y == 5)) {
                 const m = rd(cpu, getHL(cpu));
-                const newM = ((((((m << 4) >>> 0) | ((cpu.a & 15) >>> 0)) >>> 0) & 255) >>> 0);
-                cpu.a = ((((cpu.a & 240) >>> 0) | ((Math.floor(m / 2 ** (4)) & 15) >>> 0)) >>> 0);
+                const newM = ((((Math.trunc(m * 2 ** (__sh(4, 64))) | ((cpu.a & 15) >>> 0)) >>> 0) & 255) >>> 0);
+                cpu.a = ((((cpu.a & 240) >>> 0) | ((Math.floor(m / 2 ** (__sh(4, 64))) & 15) >>> 0)) >>> 0);
                 wr(cpu, getHL(cpu), newM);
                 setSZYX(cpu, cpu.a);
                 setFlag(cpu, FPV, parityEven(cpu.a));
@@ -4058,21 +4182,21 @@ function execED(cpu) {
   }
   if ((x == 2)) {
     if (((y >= 4) && (z < 4))) {
-      let dir = (-1);
+      let dir = __ovf((-1), -9223372036854775808, 9223372036854775807);
       if (((y == 4) || (y == 6))) {
         dir = 1;
       }
       if ((z == 0)) {
         blockLd(cpu, dir);
         if ((((y == 6) || (y == 7)) && (getBC(cpu) != 0))) {
-          cpu.pc = ((Math.trunc((cpu.pc - 2)) & 65535) >>> 0);
+          cpu.pc = ((__ovf((cpu.pc - 2), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
         }
         return true;
       }
       if ((z == 1)) {
         blockCp(cpu, dir);
         if (((((y == 6) || (y == 7)) && (getBC(cpu) != 0)) && (((cpu.f & FZ) >>> 0) == 0))) {
-          cpu.pc = ((Math.trunc((cpu.pc - 2)) & 65535) >>> 0);
+          cpu.pc = ((__ovf((cpu.pc - 2), -9223372036854775808, 9223372036854775807) & 65535) >>> 0);
         }
         return true;
       }
@@ -4089,7 +4213,7 @@ function shiftOp(cpu, kind, v) {
   let carry = false;
   if ((kind == 0)) {
     carry = (((v & 128) >>> 0) != 0);
-    res = ((((((v << 1) >>> 0) | (() => {
+    res = ((((Math.trunc(v * 2 ** (__sh(1, 64))) | (() => {
     if (carry) {
       return 1;
     } else {
@@ -4099,7 +4223,7 @@ function shiftOp(cpu, kind, v) {
   } else {
     if ((kind == 1)) {
       carry = (((v & 1) >>> 0) != 0);
-      res = ((((Math.floor(v / 2 ** (1)) | (() => {
+      res = ((((Math.floor(v / 2 ** (__sh(1, 64))) | (() => {
       if (carry) {
         return 128;
       } else {
@@ -4109,7 +4233,7 @@ function shiftOp(cpu, kind, v) {
     } else {
       if ((kind == 2)) {
         carry = (((v & 128) >>> 0) != 0);
-        res = ((((((v << 1) >>> 0) | (() => {
+        res = ((((Math.trunc(v * 2 ** (__sh(1, 64))) | (() => {
         if (oldC) {
           return 1;
         } else {
@@ -4119,7 +4243,7 @@ function shiftOp(cpu, kind, v) {
       } else {
         if ((kind == 3)) {
           carry = (((v & 1) >>> 0) != 0);
-          res = ((((Math.floor(v / 2 ** (1)) | (() => {
+          res = ((((Math.floor(v / 2 ** (__sh(1, 64))) | (() => {
           if (oldC) {
             return 128;
           } else {
@@ -4129,18 +4253,18 @@ function shiftOp(cpu, kind, v) {
         } else {
           if ((kind == 4)) {
             carry = (((v & 128) >>> 0) != 0);
-            res = ((((v << 1) >>> 0) & 255) >>> 0);
+            res = ((Math.trunc(v * 2 ** (__sh(1, 64))) & 255) >>> 0);
           } else {
             if ((kind == 5)) {
               carry = (((v & 1) >>> 0) != 0);
-              res = ((((Math.floor(v / 2 ** (1)) | ((v & 128) >>> 0)) >>> 0) & 255) >>> 0);
+              res = ((((Math.floor(v / 2 ** (__sh(1, 64))) | ((v & 128) >>> 0)) >>> 0) & 255) >>> 0);
             } else {
               if ((kind == 6)) {
                 carry = (((v & 128) >>> 0) != 0);
-                res = ((((((v << 1) >>> 0) | 1) >>> 0) & 255) >>> 0);
+                res = ((((Math.trunc(v * 2 ** (__sh(1, 64))) | 1) >>> 0) & 255) >>> 0);
               } else {
                 carry = (((v & 1) >>> 0) != 0);
-                res = ((Math.floor(v / 2 ** (1)) & 255) >>> 0);
+                res = ((Math.floor(v / 2 ** (__sh(1, 64))) & 255) >>> 0);
               }
             }
           }
@@ -4175,27 +4299,27 @@ function opOff(opNum) {
 
 function operatorOut(s, z, c, part, ci, opNum, baseInc, modIn) {
   const off = opOff(opNum);
-  const idx = Math.trunc((Math.trunc((c * 4)) + Math.trunc((opNum - 1))));
-  const inc = Math.trunc(Math.trunc(Math.trunc((baseInc * opMulX2(z, part, off, ci))) / 2));
-  s.opPhase[idx] = ((Math.trunc((s.opPhase[idx] + inc)) & 16777215) >>> 0);
-  const tl = ((z.ym[Math.trunc((Math.trunc((Math.trunc((part + 64)) + off)) + ci))] & 127) >>> 0);
-  const atten = Math.trunc((127 - tl));
+  const idx = __ovf((__ovf((c * 4), -9223372036854775808, 9223372036854775807) + __ovf((opNum - 1), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807);
+  const inc = __ovf(__idiv(__ovf((baseInc * opMulX2(z, part, off, ci)), -9223372036854775808, 9223372036854775807), 2), -9223372036854775808, 9223372036854775807);
+  __idxSet(s.opPhase, idx, ((__ovf((__idx(s.opPhase, idx) + inc), -9223372036854775808, 9223372036854775807) & 16777215) >>> 0));
+  const tl = ((__idx(z.ym, __ovf((__ovf((__ovf((part + 64), -9223372036854775808, 9223372036854775807) + off), -9223372036854775808, 9223372036854775807) + ci), -9223372036854775808, 9223372036854775807)) & 127) >>> 0);
+  const atten = __ovf((127 - tl), -9223372036854775808, 9223372036854775807);
   if ((atten <= 0)) {
     return 0;
   }
-  const ph = ((Math.trunc((Math.floor(s.opPhase[idx] / 2 ** (8)) + modIn)) & 255) >>> 0);
-  return Math.trunc(Math.trunc(Math.trunc((sineLut(ph) * atten)) / 127));
+  const ph = ((__ovf((Math.floor(__idx(s.opPhase, idx) / 2 ** (__sh(8, 64))) + modIn), -9223372036854775808, 9223372036854775807) & 255) >>> 0);
+  return __ovf(__idiv(__ovf((sineLut(ph) * atten), -9223372036854775808, 9223372036854775807), 127), -9223372036854775808, 9223372036854775807);
 }
 
 function fmChannel4op(s, z, c, part, ci, baseInc) {
-  const alg = ((z.ym[Math.trunc((Math.trunc((part + 176)) + ci))] & 7) >>> 0);
-  const fb = ((Math.floor(z.ym[Math.trunc((Math.trunc((part + 176)) + ci))] / 2 ** (3)) & 7) >>> 0);
+  const alg = ((__idx(z.ym, __ovf((__ovf((part + 176), -9223372036854775808, 9223372036854775807) + ci), -9223372036854775808, 9223372036854775807)) & 7) >>> 0);
+  const fb = ((Math.floor(__idx(z.ym, __ovf((__ovf((part + 176), -9223372036854775808, 9223372036854775807) + ci), -9223372036854775808, 9223372036854775807)) / 2 ** (__sh(3, 64))) & 7) >>> 0);
   let fbIn = 0;
   if ((fb > 0)) {
-    fbIn = Math.floor(s.fbMem[c] / 2 ** (Math.trunc((9 - fb))));
+    fbIn = Math.floor(__idx(s.fbMem, c) / 2 ** (__sh(__ovf((9 - fb), -9223372036854775808, 9223372036854775807), 64)));
   }
   const o1 = operatorOut(s, z, c, part, ci, 1, baseInc, fbIn);
-  s.fbMem[c] = o1;
+  __idxSet(s.fbMem, c, o1);
   let out = 0;
   if ((alg == 0)) {
     const o2 = operatorOut(s, z, c, part, ci, 2, baseInc, o1);
@@ -4204,41 +4328,41 @@ function fmChannel4op(s, z, c, part, ci, baseInc) {
   } else {
     if ((alg == 1)) {
       const o2 = operatorOut(s, z, c, part, ci, 2, baseInc, 0);
-      const o3 = operatorOut(s, z, c, part, ci, 3, baseInc, Math.trunc((o1 + o2)));
+      const o3 = operatorOut(s, z, c, part, ci, 3, baseInc, __ovf((o1 + o2), -9223372036854775808, 9223372036854775807));
       out = operatorOut(s, z, c, part, ci, 4, baseInc, o3);
     } else {
       if ((alg == 2)) {
         const o2 = operatorOut(s, z, c, part, ci, 2, baseInc, 0);
         const o3 = operatorOut(s, z, c, part, ci, 3, baseInc, o2);
-        out = operatorOut(s, z, c, part, ci, 4, baseInc, Math.trunc((o1 + o3)));
+        out = operatorOut(s, z, c, part, ci, 4, baseInc, __ovf((o1 + o3), -9223372036854775808, 9223372036854775807));
       } else {
         if ((alg == 3)) {
           const o2 = operatorOut(s, z, c, part, ci, 2, baseInc, o1);
           const o3 = operatorOut(s, z, c, part, ci, 3, baseInc, 0);
-          out = operatorOut(s, z, c, part, ci, 4, baseInc, Math.trunc((o2 + o3)));
+          out = operatorOut(s, z, c, part, ci, 4, baseInc, __ovf((o2 + o3), -9223372036854775808, 9223372036854775807));
         } else {
           if ((alg == 4)) {
             const o2 = operatorOut(s, z, c, part, ci, 2, baseInc, o1);
             const o3 = operatorOut(s, z, c, part, ci, 3, baseInc, 0);
             const o4 = operatorOut(s, z, c, part, ci, 4, baseInc, o3);
-            out = Math.trunc((o2 + o4));
+            out = __ovf((o2 + o4), -9223372036854775808, 9223372036854775807);
           } else {
             if ((alg == 5)) {
               const o2 = operatorOut(s, z, c, part, ci, 2, baseInc, o1);
               const o3 = operatorOut(s, z, c, part, ci, 3, baseInc, o1);
               const o4 = operatorOut(s, z, c, part, ci, 4, baseInc, o1);
-              out = Math.trunc((Math.trunc((o2 + o3)) + o4));
+              out = __ovf((__ovf((o2 + o3), -9223372036854775808, 9223372036854775807) + o4), -9223372036854775808, 9223372036854775807);
             } else {
               if ((alg == 6)) {
                 const o2 = operatorOut(s, z, c, part, ci, 2, baseInc, o1);
                 const o3 = operatorOut(s, z, c, part, ci, 3, baseInc, 0);
                 const o4 = operatorOut(s, z, c, part, ci, 4, baseInc, 0);
-                out = Math.trunc((Math.trunc((o2 + o3)) + o4));
+                out = __ovf((__ovf((o2 + o3), -9223372036854775808, 9223372036854775807) + o4), -9223372036854775808, 9223372036854775807);
               } else {
                 const o2 = operatorOut(s, z, c, part, ci, 2, baseInc, 0);
                 const o3 = operatorOut(s, z, c, part, ci, 3, baseInc, 0);
                 const o4 = operatorOut(s, z, c, part, ci, 4, baseInc, 0);
-                out = Math.trunc((Math.trunc((Math.trunc((o1 + o2)) + o3)) + o4));
+                out = __ovf((__ovf((__ovf((o1 + o2), -9223372036854775808, 9223372036854775807) + o3), -9223372036854775808, 9223372036854775807) + o4), -9223372036854775808, 9223372036854775807);
               }
             }
           }
@@ -4250,11 +4374,11 @@ function fmChannel4op(s, z, c, part, ci, baseInc) {
 }
 
 function opMulX2(z, part, slotOff, ci) {
-  const mul = ((z.ym[Math.trunc((Math.trunc((Math.trunc((part + 48)) + slotOff)) + ci))] & 15) >>> 0);
+  const mul = ((__idx(z.ym, __ovf((__ovf((__ovf((part + 48), -9223372036854775808, 9223372036854775807) + slotOff), -9223372036854775808, 9223372036854775807) + ci), -9223372036854775808, 9223372036854775807)) & 15) >>> 0);
   if ((mul == 0)) {
     return 1;
   }
-  return Math.trunc((mul * 2));
+  return __ovf((mul * 2), -9223372036854775808, 9223372036854775807);
 }
 
 function fmFreqMilli(z, c) {
@@ -4265,13 +4389,13 @@ function fmFreqMilli(z, c) {
     return 256;
   }
   })();
-  const ci = (c % 3);
-  const lo = z.ym[Math.trunc((Math.trunc((part + 160)) + ci))];
-  const hi = z.ym[Math.trunc((Math.trunc((part + 164)) + ci))];
-  const fnum = ((((((hi & 7) >>> 0) << 8) >>> 0) | lo) >>> 0);
-  const block = ((Math.floor(hi / 2 ** (3)) & 7) >>> 0);
-  const shifted = ((fnum << block) >>> 0);
-  return Math.trunc(Math.trunc(Math.trunc((shifted * FM_SCALE_1E6)) / 1000));
+  const ci = __irem(c, 3);
+  const lo = __idx(z.ym, __ovf((__ovf((part + 160), -9223372036854775808, 9223372036854775807) + ci), -9223372036854775808, 9223372036854775807));
+  const hi = __idx(z.ym, __ovf((__ovf((part + 164), -9223372036854775808, 9223372036854775807) + ci), -9223372036854775808, 9223372036854775807));
+  const fnum = ((Math.trunc(((hi & 7) >>> 0) * 2 ** (__sh(8, 64))) | lo) >>> 0);
+  const block = ((Math.floor(hi / 2 ** (__sh(3, 64))) & 7) >>> 0);
+  const shifted = Math.trunc(fnum * 2 ** (__sh(block, 64)));
+  return __ovf(__idiv(__ovf((shifted * FM_SCALE_1E6), -9223372036854775808, 9223372036854775807), 1000), -9223372036854775808, 9223372036854775807);
 }
 
 function fmAmp(z, c) {
@@ -4282,9 +4406,9 @@ function fmAmp(z, c) {
     return 256;
   }
   })();
-  const ci = (c % 3);
-  const tl = ((z.ym[Math.trunc((Math.trunc((part + 76)) + ci))] & 127) >>> 0);
-  const a = Math.trunc((255 - Math.trunc((tl * 2))));
+  const ci = __irem(c, 3);
+  const tl = ((__idx(z.ym, __ovf((__ovf((part + 76), -9223372036854775808, 9223372036854775807) + ci), -9223372036854775808, 9223372036854775807)) & 127) >>> 0);
+  const a = __ovf((255 - __ovf((tl * 2), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807);
   if ((a < 0)) {
     return 0;
   }
@@ -4292,11 +4416,11 @@ function fmAmp(z, c) {
 }
 
 function keyOnMask(z) {
-  return z.ym[40];
+  return __idx(z.ym, 40);
 }
 
 function panLR(z, part, ci) {
-  const p = ((Math.floor(z.ym[Math.trunc((Math.trunc((part + 180)) + ci))] / 2 ** (6)) & 3) >>> 0);
+  const p = ((Math.floor(__idx(z.ym, __ovf((__ovf((part + 180), -9223372036854775808, 9223372036854775807) + ci), -9223372036854775808, 9223372036854775807)) / 2 ** (__sh(6, 64))) & 3) >>> 0);
   if ((p == 0)) {
     return 3;
   }
@@ -4306,18 +4430,18 @@ function panLR(z, part, ci) {
 function synthSample(s, z) {
   let accL = 0;
   let accR = 0;
-  const dacOn = (((z.ym[43] & 128) >>> 0) != 0);
+  const dacOn = (((__idx(z.ym, 43) & 128) >>> 0) != 0);
   if (dacOn) {
     if ((z.dacR < z.dacW)) {
-      const smp = z.dac[((z.dacR & 4095) >>> 0)];
-      z.dacR = Math.trunc((z.dacR + 1));
-      const v = Math.trunc((Math.trunc((smp - 128)) * 3));
+      const smp = __idx(z.dac, ((z.dacR & 4095) >>> 0));
+      z.dacR = __ovf((z.dacR + 1), -9223372036854775808, 9223372036854775807);
+      const v = __ovf((__ovf((smp - 128), -9223372036854775808, 9223372036854775807) * 3), -9223372036854775808, 9223372036854775807);
       const pan = panLR(z, 256, 2);
       if ((((pan & 2) >>> 0) != 0)) {
-        accL = Math.trunc((accL + v));
+        accL = __ovf((accL + v), -9223372036854775808, 9223372036854775807);
       }
       if ((((pan & 1) >>> 0) != 0)) {
-        accR = Math.trunc((accR + v));
+        accR = __ovf((accR + v), -9223372036854775808, 9223372036854775807);
       }
     }
   }
@@ -4331,75 +4455,75 @@ function synthSample(s, z) {
         return 256;
       }
       })();
-      const ci = (c % 3);
+      const ci = __irem(c, 3);
       const target = (() => {
-      if (z.fmKey[c]) {
+      if (__idx(z.fmKey, c)) {
         return fmAmp(z, c);
       } else {
         return 0;
       }
       })();
-      if ((s.envLevel[c] < target)) {
-        s.envLevel[c] = Math.trunc((s.envLevel[c] + 8));
-        if ((s.envLevel[c] > target)) {
-          s.envLevel[c] = target;
+      if ((__idx(s.envLevel, c) < target)) {
+        __idxSet(s.envLevel, c, __ovf((__idx(s.envLevel, c) + 8), -9223372036854775808, 9223372036854775807));
+        if ((__idx(s.envLevel, c) > target)) {
+          __idxSet(s.envLevel, c, target);
         }
       } else {
-        if ((s.envLevel[c] > target)) {
-          const rr = ((z.ym[Math.trunc((Math.trunc((part + 140)) + ci))] & 15) >>> 0);
-          const step = Math.trunc((1 + rr));
-          s.envLevel[c] = Math.trunc((s.envLevel[c] - step));
-          if ((s.envLevel[c] < target)) {
-            s.envLevel[c] = target;
+        if ((__idx(s.envLevel, c) > target)) {
+          const rr = ((__idx(z.ym, __ovf((__ovf((part + 140), -9223372036854775808, 9223372036854775807) + ci), -9223372036854775808, 9223372036854775807)) & 15) >>> 0);
+          const step = __ovf((1 + rr), -9223372036854775808, 9223372036854775807);
+          __idxSet(s.envLevel, c, __ovf((__idx(s.envLevel, c) - step), -9223372036854775808, 9223372036854775807));
+          if ((__idx(s.envLevel, c) < target)) {
+            __idxSet(s.envLevel, c, target);
           }
         }
       }
       const fMilli = fmFreqMilli(z, c);
-      if (((fMilli > 0) && (s.envLevel[c] > 0))) {
-        const baseInc = Math.trunc(Math.trunc(Math.trunc((fMilli * 65536)) / Math.trunc((SAMPLE_RATE * 1000))));
-        const chOut = Math.trunc(Math.trunc(Math.trunc((fmChannel4op(s, z, c, part, ci, baseInc) * s.envLevel[c])) / 255));
+      if (((fMilli > 0) && (__idx(s.envLevel, c) > 0))) {
+        const baseInc = __ovf(__idiv(__ovf((fMilli * 65536), -9223372036854775808, 9223372036854775807), __ovf((SAMPLE_RATE * 1000), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807);
+        const chOut = __ovf(__idiv(__ovf((fmChannel4op(s, z, c, part, ci, baseInc) * __idx(s.envLevel, c)), -9223372036854775808, 9223372036854775807), 255), -9223372036854775808, 9223372036854775807);
         const pan = panLR(z, part, ci);
         if ((((pan & 2) >>> 0) != 0)) {
-          accL = Math.trunc((accL + chOut));
+          accL = __ovf((accL + chOut), -9223372036854775808, 9223372036854775807);
         }
         if ((((pan & 1) >>> 0) != 0)) {
-          accR = Math.trunc((accR + chOut));
+          accR = __ovf((accR + chOut), -9223372036854775808, 9223372036854775807);
         }
       }
     }
-    c = Math.trunc((c + 1));
+    c = __ovf((c + 1), -9223372036854775808, 9223372036854775807);
   }
   let ch = 0;
   while ((ch < 3)) {
-    const period = z.psg[Math.trunc((ch * 2))];
-    const vol = Math.trunc((15 - ((z.psg[Math.trunc((Math.trunc((ch * 2)) + 1))] & 15) >>> 0)));
+    const period = __idx(z.psg, __ovf((ch * 2), -9223372036854775808, 9223372036854775807));
+    const vol = __ovf((15 - ((__idx(z.psg, __ovf((__ovf((ch * 2), -9223372036854775808, 9223372036854775807) + 1), -9223372036854775808, 9223372036854775807)) & 15) >>> 0)), -9223372036854775808, 9223372036854775807);
     if (((period > 0) && (vol > 0))) {
       const psgClk = 3579545;
-      const freqMilli = Math.trunc(Math.trunc(Math.trunc((psgClk * 1000)) / Math.trunc((32 * period))));
-      const inc = Math.trunc(Math.trunc(Math.trunc((freqMilli * 65536)) / Math.trunc((SAMPLE_RATE * 1000))));
-      s.phase[Math.trunc((6 + ch))] = ((Math.trunc((s.phase[Math.trunc((6 + ch))] + inc)) & 16777215) >>> 0);
+      const freqMilli = __ovf(__idiv(__ovf((psgClk * 1000), -9223372036854775808, 9223372036854775807), __ovf((32 * period), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807);
+      const inc = __ovf(__idiv(__ovf((freqMilli * 65536), -9223372036854775808, 9223372036854775807), __ovf((SAMPLE_RATE * 1000), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807);
+      __idxSet(s.phase, __ovf((6 + ch), -9223372036854775808, 9223372036854775807), ((__ovf((__idx(s.phase, __ovf((6 + ch), -9223372036854775808, 9223372036854775807)) + inc), -9223372036854775808, 9223372036854775807) & 16777215) >>> 0));
       const sq = (() => {
-      if ((((Math.floor(s.phase[Math.trunc((6 + ch))] / 2 ** (15)) & 1) >>> 0) != 0)) {
+      if ((((Math.floor(__idx(s.phase, __ovf((6 + ch), -9223372036854775808, 9223372036854775807)) / 2 ** (__sh(15, 64))) & 1) >>> 0) != 0)) {
         return 1;
       } else {
-        return (-1);
+        return __ovf((-1), -9223372036854775808, 9223372036854775807);
       }
       })();
-      const pv = Math.trunc((Math.trunc((sq * vol)) * 40));
-      accL = Math.trunc((accL + pv));
-      accR = Math.trunc((accR + pv));
+      const pv = __ovf((__ovf((sq * vol), -9223372036854775808, 9223372036854775807) * 40), -9223372036854775808, 9223372036854775807);
+      accL = __ovf((accL + pv), -9223372036854775808, 9223372036854775807);
+      accR = __ovf((accR + pv), -9223372036854775808, 9223372036854775807);
     }
-    ch = Math.trunc((ch + 1));
+    ch = __ovf((ch + 1), -9223372036854775808, 9223372036854775807);
   }
-  return new StereoSample(clampS16(Math.trunc((accL * 40))), clampS16(Math.trunc((accR * 40))));
+  return new StereoSample(clampS16(__ovf((accL * 40), -9223372036854775808, 9223372036854775807)), clampS16(__ovf((accR * 40), -9223372036854775808, 9223372036854775807)));
 }
 
 function clampS16(v) {
   if ((v > 32767)) {
     return 32767;
   }
-  if ((v < (-32768))) {
-    return (-32768);
+  if ((v < __ovf((-32768), -9223372036854775808, 9223372036854775807))) {
+    return __ovf((-32768), -9223372036854775808, 9223372036854775807);
   }
   return v;
 }
@@ -4412,12 +4536,12 @@ function sineLut(idx) {
     t = x;
   } else {
     if ((x < 128)) {
-      t = Math.trunc((128 - x));
+      t = __ovf((128 - x), -9223372036854775808, 9223372036854775807);
     } else {
       if ((x < 192)) {
-        t = (-Math.trunc((x - 128)));
+        t = __ovf((-__ovf((x - 128), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807);
       } else {
-        t = (-Math.trunc((256 - x)));
+        t = __ovf((-__ovf((256 - x), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807);
       }
     }
   }
@@ -4425,7 +4549,7 @@ function sineLut(idx) {
 }
 
 function frameWidth(m) {
-  if ((((m.vdpRegs[12] & 1) >>> 0) != 0)) {
+  if ((((__idx(m.vdpRegs, 12) & 1) >>> 0) != 0)) {
     return 320;
   }
   return 256;
@@ -4446,23 +4570,23 @@ function planeCells(code) {
 }
 
 function cramR(e) {
-  return Math.trunc((((Math.floor(e / 2 ** (1)) & 7) >>> 0) * 36));
+  return __ovf((((Math.floor(e / 2 ** (__sh(1, 64))) & 7) >>> 0) * 36), -9223372036854775808, 9223372036854775807);
 }
 
 function cramG(e) {
-  return Math.trunc((((Math.floor(e / 2 ** (5)) & 7) >>> 0) * 36));
+  return __ovf((((Math.floor(e / 2 ** (__sh(5, 64))) & 7) >>> 0) * 36), -9223372036854775808, 9223372036854775807);
 }
 
 function cramB(e) {
-  return Math.trunc((((Math.floor(e / 2 ** (9)) & 7) >>> 0) * 36));
+  return __ovf((((Math.floor(e / 2 ** (__sh(9, 64))) & 7) >>> 0) * 36), -9223372036854775808, 9223372036854775807);
 }
 
 function shComp(c, mode) {
   if ((mode == 1)) {
-    return Math.trunc(Math.trunc(c / 2));
+    return __ovf(__idiv(c, 2), -9223372036854775808, 9223372036854775807);
   }
   if ((mode == 2)) {
-    const v = Math.trunc((Math.trunc(Math.trunc(c / 2)) + 128));
+    const v = __ovf((__ovf(__idiv(c, 2), -9223372036854775808, 9223372036854775807) + 128), -9223372036854775808, 9223372036854775807);
     if ((v > 255)) {
       return 255;
     }
@@ -4472,36 +4596,36 @@ function shComp(c, mode) {
 }
 
 function pixelR(m, packed) {
-  return shComp(cramR(m.cram[((packed & 63) >>> 0)]), ((Math.floor(packed / 2 ** (6)) & 3) >>> 0));
+  return shComp(cramR(__idx(m.cram, ((packed & 63) >>> 0))), ((Math.floor(packed / 2 ** (__sh(6, 64))) & 3) >>> 0));
 }
 
 function pixelG(m, packed) {
-  return shComp(cramG(m.cram[((packed & 63) >>> 0)]), ((Math.floor(packed / 2 ** (6)) & 3) >>> 0));
+  return shComp(cramG(__idx(m.cram, ((packed & 63) >>> 0))), ((Math.floor(packed / 2 ** (__sh(6, 64))) & 3) >>> 0));
 }
 
 function pixelB(m, packed) {
-  return shComp(cramB(m.cram[((packed & 63) >>> 0)]), ((Math.floor(packed / 2 ** (6)) & 3) >>> 0));
+  return shComp(cramB(__idx(m.cram, ((packed & 63) >>> 0))), ((Math.floor(packed / 2 ** (__sh(6, 64))) & 3) >>> 0));
 }
 
 function vram8(m, addr) {
   const a = ((addr & 65535) >>> 0);
   if ((a < m.vram.length)) {
-    return Math.trunc(m.vram[a]);
+    return Math.trunc(__idx(m.vram, a));
   }
   return 0;
 }
 
 function wrapCoord(v, span) {
-  const r = (v % span);
+  const r = __irem(v, span);
   if ((r < 0)) {
-    return Math.trunc((r + span));
+    return __ovf((r + span), -9223372036854775808, 9223372036854775807);
   }
   return r;
 }
 
 function hscrollFor(m, y, planeB) {
-  const hbase = ((((m.vdpRegs[13] & 63) >>> 0) << 10) >>> 0);
-  const mode = ((m.vdpRegs[11] & 3) >>> 0);
+  const hbase = Math.trunc(((__idx(m.vdpRegs, 13) & 63) >>> 0) * 2 ** (__sh(10, 64)));
+  const mode = ((__idx(m.vdpRegs, 11) & 3) >>> 0);
   let row = 0;
   if ((mode == 3)) {
     row = y;
@@ -4517,47 +4641,47 @@ function hscrollFor(m, y, planeB) {
     return 0;
   }
   })();
-  const off = Math.trunc((Math.trunc((hbase + Math.trunc((row * 4)))) + planeOff));
-  return ((((vram8(m, off) << 8) >>> 0) | vram8(m, Math.trunc((off + 1)))) >>> 0);
+  const off = __ovf((__ovf((hbase + __ovf((row * 4), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807) + planeOff), -9223372036854775808, 9223372036854775807);
+  return ((Math.trunc(vram8(m, off) * 2 ** (__sh(8, 64))) | vram8(m, __ovf((off + 1), -9223372036854775808, 9223372036854775807))) >>> 0);
 }
 
 function vscrollFor(m, planeB, colPair) {
   let idx = 0;
-  if ((((m.vdpRegs[11] & 4) >>> 0) != 0)) {
-    idx = (Math.trunc((colPair * 2)) % 40);
+  if ((((__idx(m.vdpRegs, 11) & 4) >>> 0) != 0)) {
+    idx = __irem(__ovf((colPair * 2), -9223372036854775808, 9223372036854775807), 40);
   }
   if (planeB) {
-    return m.vsram[(Math.trunc((idx + 1)) % 40)];
+    return __idx(m.vsram, __irem(__ovf((idx + 1), -9223372036854775808, 9223372036854775807), 40));
   }
-  return m.vsram[idx];
+  return __idx(m.vsram, idx);
 }
 
 function sampleNametable(m, base, stride, cellX, cellY, fxIn, fyIn) {
-  const entryAddr = Math.trunc((base + Math.trunc((Math.trunc((Math.trunc((cellY * stride)) + cellX)) * 2))));
-  const entry = ((((vram8(m, entryAddr) << 8) >>> 0) | vram8(m, Math.trunc((entryAddr + 1)))) >>> 0);
+  const entryAddr = __ovf((base + __ovf((__ovf((__ovf((cellY * stride), -9223372036854775808, 9223372036854775807) + cellX), -9223372036854775808, 9223372036854775807) * 2), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807);
+  const entry = ((Math.trunc(vram8(m, entryAddr) * 2 ** (__sh(8, 64))) | vram8(m, __ovf((entryAddr + 1), -9223372036854775808, 9223372036854775807))) >>> 0);
   const tileIdx = ((entry & 2047) >>> 0);
-  const palLine = ((Math.floor(entry / 2 ** (13)) & 3) >>> 0);
+  const palLine = ((Math.floor(entry / 2 ** (__sh(13, 64))) & 3) >>> 0);
   const hflip = (((entry & 2048) >>> 0) != 0);
   const vflip = (((entry & 4096) >>> 0) != 0);
   let fx = fxIn;
   let fy = fyIn;
   if (hflip) {
-    fx = Math.trunc((7 - fx));
+    fx = __ovf((7 - fx), -9223372036854775808, 9223372036854775807);
   }
   if (vflip) {
-    fy = Math.trunc((7 - fy));
+    fy = __ovf((7 - fy), -9223372036854775808, 9223372036854775807);
   }
-  const byte = vram8(m, Math.trunc((Math.trunc((Math.trunc((tileIdx * 32)) + Math.trunc((fy * 4)))) + Math.trunc(Math.trunc(fx / 2)))));
+  const byte = vram8(m, __ovf((__ovf((__ovf((tileIdx * 32), -9223372036854775808, 9223372036854775807) + __ovf((fy * 4), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807) + __ovf(__idiv(fx, 2), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807));
   let color = 0;
   if ((((fx & 1) >>> 0) == 0)) {
-    color = ((Math.floor(byte / 2 ** (4)) & 15) >>> 0);
+    color = ((Math.floor(byte / 2 ** (__sh(4, 64))) & 15) >>> 0);
   } else {
     color = ((byte & 15) >>> 0);
   }
   if ((color == 0)) {
-    return (-1);
+    return __ovf((-1), -9223372036854775808, 9223372036854775807);
   }
-  let packed = Math.trunc((Math.trunc((palLine * 16)) + color));
+  let packed = __ovf((__ovf((palLine * 16), -9223372036854775808, 9223372036854775807) + color), -9223372036854775808, 9223372036854775807);
   if ((((entry & 32768) >>> 0) != 0)) {
     packed = ((packed | PRI) >>> 0);
   }
@@ -4565,20 +4689,20 @@ function sampleNametable(m, base, stride, cellX, cellY, fxIn, fyIn) {
 }
 
 function samplePlane(m, base, pw, ph, px, py) {
-  return sampleNametable(m, base, pw, (Math.trunc(Math.trunc(px / 8)) % pw), (Math.trunc(Math.trunc(py / 8)) % ph), (px % 8), (py % 8));
+  return sampleNametable(m, base, pw, __irem(__ovf(__idiv(px, 8), -9223372036854775808, 9223372036854775807), pw), __irem(__ovf(__idiv(py, 8), -9223372036854775808, 9223372036854775807), ph), __irem(px, 8), __irem(py, 8));
 }
 
 function inWindow(m, x, y) {
-  const rv = m.vdpRegs[18];
-  const vval = Math.trunc((((rv & 31) >>> 0) * 8));
+  const rv = __idx(m.vdpRegs, 18);
+  const vval = __ovf((((rv & 31) >>> 0) * 8), -9223372036854775808, 9223372036854775807);
   let yin = false;
   if ((((rv & 128) >>> 0) != 0)) {
     yin = (y >= vval);
   } else {
     yin = (y < vval);
   }
-  const rh = m.vdpRegs[17];
-  const hval = Math.trunc((((rh & 31) >>> 0) * 16));
+  const rh = __idx(m.vdpRegs, 17);
+  const hval = __ovf((((rh & 31) >>> 0) * 16), -9223372036854775808, 9223372036854775807);
   let xin = false;
   if ((((rh & 128) >>> 0) != 0)) {
     xin = (x >= hval);
@@ -4598,39 +4722,39 @@ function sampleWindow(m, x, y, width) {
   })();
   const base = (() => {
   if ((width == 320)) {
-    return ((((m.vdpRegs[3] & 62) >>> 0) << 10) >>> 0);
+    return Math.trunc(((__idx(m.vdpRegs, 3) & 62) >>> 0) * 2 ** (__sh(10, 64)));
   } else {
-    return ((((m.vdpRegs[3] & 63) >>> 0) << 10) >>> 0);
+    return Math.trunc(((__idx(m.vdpRegs, 3) & 63) >>> 0) * 2 ** (__sh(10, 64)));
   }
   })();
-  return sampleNametable(m, base, stride, Math.trunc(Math.trunc(x / 8)), Math.trunc(Math.trunc(y / 8)), (x % 8), (y % 8));
+  return sampleNametable(m, base, stride, __ovf(__idiv(x, 8), -9223372036854775808, 9223372036854775807), __ovf(__idiv(y, 8), -9223372036854775808, 9223372036854775807), __irem(x, 8), __irem(y, 8));
 }
 
 function renderIndexed(m) {
   const width = frameWidth(m);
   const height = frameHeight(m);
-  const planeW = planeCells(((m.vdpRegs[16] & 3) >>> 0));
-  const planeH = planeCells(((Math.floor(m.vdpRegs[16] / 2 ** (4)) & 3) >>> 0));
-  const baseA = ((((m.vdpRegs[2] & 56) >>> 0) << 10) >>> 0);
-  const baseB = ((((m.vdpRegs[4] & 7) >>> 0) << 13) >>> 0);
-  const backdrop = ((m.vdpRegs[7] & 63) >>> 0);
-  const sh = (((m.vdpRegs[12] & 8) >>> 0) != 0);
-  if ((((m.vdpRegs[1] & 64) >>> 0) == 0)) {
+  const planeW = planeCells(((__idx(m.vdpRegs, 16) & 3) >>> 0));
+  const planeH = planeCells(((Math.floor(__idx(m.vdpRegs, 16) / 2 ** (__sh(4, 64))) & 3) >>> 0));
+  const baseA = Math.trunc(((__idx(m.vdpRegs, 2) & 56) >>> 0) * 2 ** (__sh(10, 64)));
+  const baseB = Math.trunc(((__idx(m.vdpRegs, 4) & 7) >>> 0) * 2 ** (__sh(13, 64)));
+  const backdrop = ((__idx(m.vdpRegs, 7) & 63) >>> 0);
+  const sh = (((__idx(m.vdpRegs, 12) & 8) >>> 0) != 0);
+  if ((((__idx(m.vdpRegs, 1) & 64) >>> 0) == 0)) {
     let blank = [];
     let bi = 0;
-    while ((bi < Math.trunc((width * height)))) {
+    while ((bi < __ovf((width * height), -9223372036854775808, 9223372036854775807))) {
       blank.push(((backdrop & 63) >>> 0));
-      bi = Math.trunc((bi + 1));
+      bi = __ovf((bi + 1), -9223372036854775808, 9223372036854775807);
     }
     return blank;
   }
-  const spanAx = Math.trunc((planeW * 8));
-  const spanAy = Math.trunc((planeH * 8));
+  const spanAx = __ovf((planeW * 8), -9223372036854775808, 9223372036854775807);
+  const spanAy = __ovf((planeH * 8), -9223372036854775808, 9223372036854775807);
   let spr = [];
   let s = 0;
-  while ((s < Math.trunc((width * height)))) {
-    spr.push((-1));
-    s = Math.trunc((s + 1));
+  while ((s < __ovf((width * height), -9223372036854775808, 9223372036854775807))) {
+    spr.push(__ovf((-1), -9223372036854775808, 9223372036854775807));
+    s = __ovf((s + 1), -9223372036854775808, 9223372036854775807);
   }
   drawSprites(m, spr, width, height);
   let fb = [];
@@ -4640,17 +4764,17 @@ function renderIndexed(m) {
     const hB = hscrollFor(m, y, true);
     let x = 0;
     while ((x < width)) {
-      const colPair = Math.trunc(Math.trunc(x / 16));
-      const pyA = wrapCoord(Math.trunc((y + vscrollFor(m, false, colPair))), spanAy);
-      const pyB = wrapCoord(Math.trunc((y + vscrollFor(m, true, colPair))), spanAy);
-      let aVal = (-1);
+      const colPair = __ovf(__idiv(x, 16), -9223372036854775808, 9223372036854775807);
+      const pyA = wrapCoord(__ovf((y + vscrollFor(m, false, colPair)), -9223372036854775808, 9223372036854775807), spanAy);
+      const pyB = wrapCoord(__ovf((y + vscrollFor(m, true, colPair)), -9223372036854775808, 9223372036854775807), spanAy);
+      let aVal = __ovf((-1), -9223372036854775808, 9223372036854775807);
       if (inWindow(m, x, y)) {
         aVal = sampleWindow(m, x, y, width);
       } else {
-        aVal = samplePlane(m, baseA, planeW, planeH, wrapCoord(Math.trunc((x - hA)), spanAx), pyA);
+        aVal = samplePlane(m, baseA, planeW, planeH, wrapCoord(__ovf((x - hA), -9223372036854775808, 9223372036854775807), spanAx), pyA);
       }
-      const bVal = samplePlane(m, baseB, planeW, planeH, wrapCoord(Math.trunc((x - hB)), spanAx), pyB);
-      let sVal = spr[Math.trunc((Math.trunc((y * width)) + x))];
+      const bVal = samplePlane(m, baseB, planeW, planeH, wrapCoord(__ovf((x - hB), -9223372036854775808, 9223372036854775807), spanAx), pyB);
+      let sVal = __idx(spr, __ovf((__ovf((y * width), -9223372036854775808, 9223372036854775807) + x), -9223372036854775808, 9223372036854775807));
       let shadowed = false;
       let highlighted = false;
       if (sh) {
@@ -4660,7 +4784,7 @@ function renderIndexed(m) {
           const sc = ((sVal & 63) >>> 0);
           if ((sc == 63)) {
             shadowed = true;
-            sVal = (-1);
+            sVal = __ovf((-1), -9223372036854775808, 9223372036854775807);
           } else {
             if ((sc == 62)) {
               if (shadowed) {
@@ -4668,7 +4792,7 @@ function renderIndexed(m) {
               } else {
                 highlighted = true;
               }
-              sVal = (-1);
+              sVal = __ovf((-1), -9223372036854775808, 9223372036854775807);
             }
           }
         }
@@ -4710,63 +4834,63 @@ function renderIndexed(m) {
           }
         }
       }
-      fb.push(((((pick & 63) >>> 0) | ((mode << 6) >>> 0)) >>> 0));
-      x = Math.trunc((x + 1));
+      fb.push(((((pick & 63) >>> 0) | Math.trunc(mode * 2 ** (__sh(6, 64)))) >>> 0));
+      x = __ovf((x + 1), -9223372036854775808, 9223372036854775807);
     }
-    y = Math.trunc((y + 1));
+    y = __ovf((y + 1), -9223372036854775808, 9223372036854775807);
   }
   return fb;
 }
 
 function drawSprites(m, fb, width, height) {
-  const satBase = ((((m.vdpRegs[5] & 127) >>> 0) << 9) >>> 0);
+  const satBase = Math.trunc(((__idx(m.vdpRegs, 5) & 127) >>> 0) * 2 ** (__sh(9, 64)));
   let sprIdx = 0;
   let guard = 0;
   while ((guard < 80)) {
-    const o = Math.trunc((satBase + Math.trunc((sprIdx * 8))));
-    const yraw = ((((((vram8(m, o) << 8) >>> 0) | vram8(m, Math.trunc((o + 1)))) >>> 0) & 1023) >>> 0);
-    const sizeByte = vram8(m, Math.trunc((o + 2)));
-    const hs = Math.trunc((((Math.floor(sizeByte / 2 ** (2)) & 3) >>> 0) + 1));
-    const vs = Math.trunc((((sizeByte & 3) >>> 0) + 1));
-    const link = ((vram8(m, Math.trunc((o + 3))) & 127) >>> 0);
-    const attr = ((((vram8(m, Math.trunc((o + 4))) << 8) >>> 0) | vram8(m, Math.trunc((o + 5)))) >>> 0);
-    const xraw = ((((((vram8(m, Math.trunc((o + 6))) << 8) >>> 0) | vram8(m, Math.trunc((o + 7)))) >>> 0) & 511) >>> 0);
+    const o = __ovf((satBase + __ovf((sprIdx * 8), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807);
+    const yraw = ((((Math.trunc(vram8(m, o) * 2 ** (__sh(8, 64))) | vram8(m, __ovf((o + 1), -9223372036854775808, 9223372036854775807))) >>> 0) & 1023) >>> 0);
+    const sizeByte = vram8(m, __ovf((o + 2), -9223372036854775808, 9223372036854775807));
+    const hs = __ovf((((Math.floor(sizeByte / 2 ** (__sh(2, 64))) & 3) >>> 0) + 1), -9223372036854775808, 9223372036854775807);
+    const vs = __ovf((((sizeByte & 3) >>> 0) + 1), -9223372036854775808, 9223372036854775807);
+    const link = ((vram8(m, __ovf((o + 3), -9223372036854775808, 9223372036854775807)) & 127) >>> 0);
+    const attr = ((Math.trunc(vram8(m, __ovf((o + 4), -9223372036854775808, 9223372036854775807)) * 2 ** (__sh(8, 64))) | vram8(m, __ovf((o + 5), -9223372036854775808, 9223372036854775807))) >>> 0);
+    const xraw = ((((Math.trunc(vram8(m, __ovf((o + 6), -9223372036854775808, 9223372036854775807)) * 2 ** (__sh(8, 64))) | vram8(m, __ovf((o + 7), -9223372036854775808, 9223372036854775807))) >>> 0) & 511) >>> 0);
     const tileBase = ((attr & 2047) >>> 0);
-    const pal = ((Math.floor(attr / 2 ** (13)) & 3) >>> 0);
+    const pal = ((Math.floor(attr / 2 ** (__sh(13, 64))) & 3) >>> 0);
     const hflip = (((attr & 2048) >>> 0) != 0);
     const vflip = (((attr & 4096) >>> 0) != 0);
     const pri = (((attr & 32768) >>> 0) != 0);
-    const sx = Math.trunc((xraw - 128));
-    const sy = Math.trunc((yraw - 128));
+    const sx = __ovf((xraw - 128), -9223372036854775808, 9223372036854775807);
+    const sy = __ovf((yraw - 128), -9223372036854775808, 9223372036854775807);
     let col = 0;
     while ((col < hs)) {
       let row = 0;
       while ((row < vs)) {
-        const tile = Math.trunc((Math.trunc((tileBase + Math.trunc((col * vs)))) + row));
+        const tile = __ovf((__ovf((tileBase + __ovf((col * vs), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807) + row), -9223372036854775808, 9223372036854775807);
         const destCol = (() => {
         if (hflip) {
-          return Math.trunc((Math.trunc((hs - 1)) - col));
+          return __ovf((__ovf((hs - 1), -9223372036854775808, 9223372036854775807) - col), -9223372036854775808, 9223372036854775807);
         } else {
           return col;
         }
         })();
         const destRow = (() => {
         if (vflip) {
-          return Math.trunc((Math.trunc((vs - 1)) - row));
+          return __ovf((__ovf((vs - 1), -9223372036854775808, 9223372036854775807) - row), -9223372036854775808, 9223372036854775807);
         } else {
           return row;
         }
         })();
-        drawSprTile(m, fb, width, height, tile, Math.trunc((sx + Math.trunc((destCol * 8)))), Math.trunc((sy + Math.trunc((destRow * 8)))), pal, hflip, vflip, pri);
-        row = Math.trunc((row + 1));
+        drawSprTile(m, fb, width, height, tile, __ovf((sx + __ovf((destCol * 8), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807), __ovf((sy + __ovf((destRow * 8), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807), pal, hflip, vflip, pri);
+        row = __ovf((row + 1), -9223372036854775808, 9223372036854775807);
       }
-      col = Math.trunc((col + 1));
+      col = __ovf((col + 1), -9223372036854775808, 9223372036854775807);
     }
     if ((link == 0)) {
       return;
     }
     sprIdx = link;
-    guard = Math.trunc((guard + 1));
+    guard = __ovf((guard + 1), -9223372036854775808, 9223372036854775807);
   }
 }
 
@@ -4775,44 +4899,47 @@ function drawSprTile(m, fb, width, height, tile, ox, oy, pal, hflip, vflip, pri)
   while ((py < 8)) {
     let px = 0;
     while ((px < 8)) {
-      const dx = Math.trunc((ox + px));
-      const dy = Math.trunc((oy + py));
+      const dx = __ovf((ox + px), -9223372036854775808, 9223372036854775807);
+      const dy = __ovf((oy + py), -9223372036854775808, 9223372036854775807);
       if (((((dx >= 0) && (dx < width)) && (dy >= 0)) && (dy < height))) {
-        const slot = Math.trunc((Math.trunc((dy * width)) + dx));
-        if ((fb[slot] < 0)) {
+        const slot = __ovf((__ovf((dy * width), -9223372036854775808, 9223372036854775807) + dx), -9223372036854775808, 9223372036854775807);
+        if ((__idx(fb, slot) < 0)) {
           let fx = px;
           let fy = py;
           if (hflip) {
-            fx = Math.trunc((7 - px));
+            fx = __ovf((7 - px), -9223372036854775808, 9223372036854775807);
           }
           if (vflip) {
-            fy = Math.trunc((7 - py));
+            fy = __ovf((7 - py), -9223372036854775808, 9223372036854775807);
           }
-          const byte = vram8(m, Math.trunc((Math.trunc((Math.trunc((tile * 32)) + Math.trunc((fy * 4)))) + Math.trunc(Math.trunc(fx / 2)))));
+          const byte = vram8(m, __ovf((__ovf((__ovf((tile * 32), -9223372036854775808, 9223372036854775807) + __ovf((fy * 4), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807) + __ovf(__idiv(fx, 2), -9223372036854775808, 9223372036854775807)), -9223372036854775808, 9223372036854775807));
           let color = 0;
           if ((((fx & 1) >>> 0) == 0)) {
-            color = ((Math.floor(byte / 2 ** (4)) & 15) >>> 0);
+            color = ((Math.floor(byte / 2 ** (__sh(4, 64))) & 15) >>> 0);
           } else {
             color = ((byte & 15) >>> 0);
           }
           if ((color != 0)) {
-            let packed = Math.trunc((Math.trunc((pal * 16)) + color));
+            let packed = __ovf((__ovf((pal * 16), -9223372036854775808, 9223372036854775807) + color), -9223372036854775808, 9223372036854775807);
             if (pri) {
               packed = ((packed | PRI) >>> 0);
             }
-            fb[slot] = packed;
+            __idxSet(fb, slot, packed);
           }
         }
       }
-      px = Math.trunc((px + 1));
+      px = __ovf((px + 1), -9223372036854775808, 9223372036854775807);
     }
-    py = Math.trunc((py + 1));
+    py = __ovf((py + 1), -9223372036854775808, 9223372036854775807);
   }
+}
+
+function Unit$Eq$eq(self, _other) {
+  return true;
 }
 
 function StereoSample$Eq$eq(self, other) {
   return ((self.l == other.l) && (self.r == other.r));
 }
 
-main();
-__flush();
+try { main(); __flush(); } catch (__e) { __flush(); if (__e && __e.__milo_trap) { __eprint(__e.message + "\n"); if (typeof process !== 'undefined') process.exit(134); } throw __e; }

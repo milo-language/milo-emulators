@@ -108,7 +108,7 @@ fn newDmc(): Dmc {
     }
 }
 
-struct Apu {
+pub struct Apu {
     pulse1: Pulse
     pulse2: Pulse
     triangle: Triangle

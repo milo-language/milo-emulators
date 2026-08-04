@@ -10,7 +10,7 @@ from "./cartridge" import {
     Cartridge
 }
 
-struct Ppu {
+pub struct Ppu {
     chr: Vec<u8> // pattern tables ($0000-$1FFF)
     chrBankOffset: [i64; 8] // byte offset into chr for each 1 KiB window (mapper CHR banking)
     vram: [u8; 2048] // 2 physical nametables ($2000-$2FFF, mirrored)

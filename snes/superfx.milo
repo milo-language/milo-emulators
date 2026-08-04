@@ -13,7 +13,7 @@
 // carry/overflow/sign/zero semantics match bit-for-bit; the packed SFR word is only
 // materialized at the CPU-facing $3030/$3031 register interface.
 
-struct Fx {
+pub struct Fx {
     reg: Vec<i64> // R0-R15, held as 32-bit values (masked at use like Snes9x uint32)
 
     // decomposed status flags (see composeSfr)

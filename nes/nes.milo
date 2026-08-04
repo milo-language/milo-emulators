@@ -7,7 +7,7 @@
 //   milo build examples/emulators/nes/nes.milo -o /tmp/nes --debug
 //   /tmp/nes roms/nes-test-roms/full_palette/full_palette.nes
 from "std/argparse" import {
-    newParser
+    ArgParser
 }
 from "../shared/version" import {
     handledVersionFlag
@@ -139,7 +139,7 @@ fn main(): i32 {
     if handledVersionFlag("nes") {
         return 0
     }
-    var parser = newParser("nes", "Milo NES emulator (SDL2) — plays iNES (.nes) ROMs.")
+    var parser = ArgParser.new("nes", "Milo NES emulator (SDL2) — plays iNES (.nes) ROMs.")
     parser.addPositional("rom", "path to a .nes ROM")
     let pargs = parser.parse() // auto-handles --help / -h; errors out when rom is missing
 
@@ -158,7 +158,6 @@ fn main(): i32 {
             return 1
         }
     }
-    return 0
 }
 
 // Debug: write the current 256x240 framebuffer as raw RGB24 to /tmp/nes_dump.rgb.

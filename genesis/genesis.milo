@@ -30,7 +30,7 @@ from "./render" import {
     renderIndexed, frameWidth, frameHeight, pixelR, pixelG, pixelB
 }
 from "std/argparse" import {
-    newParser
+    ArgParser
 }
 
 @link("SDL2")
@@ -217,7 +217,7 @@ fn main(): i32 {
     if handledVersionFlag("genesis") {
         return 0
     }
-    var parser = newParser("genesis", "Milo Genesis / Mega Drive emulator (SDL2) — plays .md / .gen / .bin ROMs.")
+    var parser = ArgParser.new("genesis", "Milo Genesis / Mega Drive emulator (SDL2) — plays .md / .gen / .bin ROMs.")
     parser.addPositional("rom", "path to a .md, .gen or .bin ROM")
     let pargs = parser.parse() // auto-handles --help / -h; errors out when rom is missing
     let romPath = pargs.getString("rom")

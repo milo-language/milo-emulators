@@ -10,7 +10,7 @@ from "std/string" import {
 }
 
 fn versionLine(name: string): string {
-    return name + " " + embedFile("../.version").trim()
+    return name + " " + @embedFile("../.version").trim()
 }
 
 // Checked before argparse runs: every core takes a required ROM positional, so

@@ -251,7 +251,10 @@ fn addSystem(rows: &mut Vec<Row>, sel: &mut Vec<i64>, title: string, sys: string
     let dir = "roms/" + sys
     var names: Vec<string> = []
     if isDir(dir) {
-        for entry in readDir(dir) {
+        // A dir that lists no entries is the same as an empty one here — the
+        // menu just shows "(no ROMs)" rather than failing to open.
+        let entries = readDir(dir) ?? []
+        for entry in entries {
             if !entry.isDir && hasRomExt(entry.name, sys) {
                 names.push(entry.name.clone())
             }

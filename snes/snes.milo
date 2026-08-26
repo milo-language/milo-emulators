@@ -237,7 +237,12 @@ fn main(): i32 {
     var parser = ArgParser.new("snes", "Milo SNES emulator (SDL2) — plays .sfc / .smc ROMs.")
     parser.addPositional("rom", "path to a .sfc or .smc ROM")
     let pargs = parser.parse() // auto-handles --help / -h; errors out when rom is missing
-    let romPath = pargs.getString("rom")
+    // getString hands back Option<string>; parse() has already exited if the
+    // positional was missing, so the else arm is unreachable-but-required.
+    let Option.Some(romPath) = pargs.getString("rom") else {
+        print("error: missing ROM path; run with --help for usage")
+        return 1
+    }
     var rom: Vec<u8> = Vec.new()
     var mapMode: i64 = 0
     match loadCartridge(romPath) {

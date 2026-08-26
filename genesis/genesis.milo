@@ -220,7 +220,12 @@ fn main(): i32 {
     var parser = ArgParser.new("genesis", "Milo Genesis / Mega Drive emulator (SDL2) — plays .md / .gen / .bin ROMs.")
     parser.addPositional("rom", "path to a .md, .gen or .bin ROM")
     let pargs = parser.parse() // auto-handles --help / -h; errors out when rom is missing
-    let romPath = pargs.getString("rom")
+    // getString hands back Option<string>; parse() has already exited if the
+    // positional was missing, so the else arm is unreachable-but-required.
+    let Option.Some(romPath) = pargs.getString("rom") else {
+        print("error: missing ROM path; run with --help for usage")
+        return 1
+    }
     var cart = Cart {
         rom: Vec.new(), name: "", romEnd: 0
     }

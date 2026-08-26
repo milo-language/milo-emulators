@@ -26,8 +26,10 @@
 #                      least one 16 KiB PRG bank. cartridge.milo:61 rejects `prg16k < 1`
 #                      and checks the file covers PRG+CHR, so prg.len >= 16384 always —
 #                      but that lives in a different function, behind a struct field.
-#   nes/ppu.milo,  1x  chrPhys requires `chr.len > 0` for its `% chr.len`. newPpu pads a
+#   nes/ppu.milo,  2x  chrPhys requires `chr.len > 0` for its `% chr.len`. newPpu pads a
 #                      CHR-RAM cart (0 banks in the header) up to 8 KiB, so it is never 0.
+#                      Both call sites (ppuMemRead and ppuMemWrite) now carry the obligation;
+#                      the prover's single guarded call walker stopped skipping the write.
 #
 # Retire both with struct invariants. Until then they are documented, not silent.
 #
@@ -45,7 +47,7 @@ genesis/m68k.milo:1:0:0
 genesis/render.milo:6:0:0
 genesis/z80.milo:10:0:0
 nes/cpu.milo:2:12:0
-nes/ppu.milo:1:1:0
+nes/ppu.milo:1:2:0
 snes/cpu.milo:1:0:0
 snes/ppu.milo:4:0:0
 snes/spc.milo:1:0:0

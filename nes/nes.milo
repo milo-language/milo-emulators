@@ -143,7 +143,12 @@ fn main(): i32 {
     parser.addPositional("rom", "path to a .nes ROM")
     let pargs = parser.parse() // auto-handles --help / -h; errors out when rom is missing
 
-    let romPath = pargs.getString("rom")
+    // getString hands back Option<string>; parse() has already exited if the
+    // positional was missing, so the else arm is unreachable-but-required.
+    let Option.Some(romPath) = pargs.getString("rom") else {
+        print("error: missing ROM path; run with --help for usage")
+        return 1
+    }
 
     // match is statement-only in Milo, so the whole run lives in the Ok arm.
     match loadCartridge(romPath) {

@@ -14,7 +14,7 @@ from "./ppu" import {
     Ppu, newPpu, ppuRegWrite, ppuRegReadPure, ppuCgram, ppuVram, ppuVblankOamReload
 }
 from "./superfx" import {
-    Fx, fxNew, fxRun, fxRegRead, fxRegWrite, isSuperFx, cloneBytes
+    Fx, fxNew, fxRun, fxRegRead, fxRegWrite, isSuperFx
 }
 
 // --- P status-register bit masks ---
@@ -134,12 +134,13 @@ fn newApuSpc(): Spc {
 }
 
 pub fn memNew(): Mem {
+    let noRom: Vec<u8> = Vec.new()
     return Mem {
         addr: Vec.new(), val: Vec.new(), testMode: true,
         wram: Vec.new(), rom: Vec.new(), romMask: 0, sram: Vec.new(), sramMask: 0, mapMode: 0, mmio: Vec.new(),
         nmitimen: 0, htime: 0, vtime: 0, timeup: 0, wmadd: 0, wrmpya: 0, wrdiv: 0, rddiv: 0, rdmpy: 0, vblankToggle: 0, hcounter: 0, scanline: 0, joy1: 0, joy2: 0,
         apuSpc: newApuSpc(), apuMem: spcMemNew(), ppu: newPpu(),
-        fxEnabled: false, fx: fxNew(Vec.new())
+        fxEnabled: false, fx: fxNew(noRom)
     }
 }
 
@@ -183,13 +184,9 @@ pub fn busNew(rom: Vec<u8>, mapMode: i64): Mem {
             sramMask = sz - 1
         }
     }
-    // Super FX detection + GSU init happen before `rom` is moved into the struct.
+    // Super FX detection + GSU sizing read `rom` before it is moved into the struct.
     let fxOn = isSuperFx(rom)
-    let gsu = if fxOn {
-        fxNew(cloneBytes(rom))
-    } else {
-        fxNew(Vec.new())
-    }
+    let gsu = fxNew(rom)
     var mem = Mem {
         addr: Vec.new(), val: Vec.new(), testMode: false,
         wram: vecZeros(0x20000), rom: rom, romMask: mask,
@@ -971,7 +968,7 @@ fn runFxAndIrq(cpu: &mut Cpu, m: &mut Mem): void {
         if burst > fxFrameBudget {
             burst = fxFrameBudget
         }
-        let ran = fxRun(&mut m.fx, burst)
+        let ran = fxRun(&mut m.fx, m.rom, burst)
         fxFrameBudget = fxFrameBudget - ran
     }
     if m.fx.irqPending && (cpu.p & FI) == 0 {

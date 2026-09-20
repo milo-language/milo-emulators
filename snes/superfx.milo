@@ -5,9 +5,9 @@
 // registers, ALT1/ALT2/ALT3-prefixed opcode set (~90 ops), PLOT/RPIX bitplane
 // addressing, and the 1-byte fetch pipeline.
 //
-// FFI-free (no std imports) so the browser (emit-js) core can use it too. ROM is
-// cloned in (read-only) to keep the whole GSU self-contained — sidesteps the
-// second-class-ref rule against borrowing two &mut Mem fields at once.
+// FFI-free (no std imports) so the browser (emit-js) core can use it too. The GSU
+// does not own the cart ROM: every run borrows `Mem.rom` alongside `&mut Mem.fx`
+// (disjoint field borrows of one struct), so the ROM exists once in memory.
 //
 // Flag storage mirrors Snes9x's decomposition (vSign/vZero/vCarry/vOverflow) so the
 // carry/overflow/sign/zero semantics match bit-for-bit; the packed SFR word is only
@@ -49,7 +49,6 @@ pub struct Fx {
     cacheActive: bool
     lastRamAdr: i64 // for SBK
 
-    rom: Vec<u8> // clone of cart ROM (read-only)
     romMask: i64
     nRomBanks: i64 // ROM size / 32KB, capped 0x20 (GSU can't see >2MB)
 
@@ -97,16 +96,6 @@ fn fxRamNonzero(fx: &Fx): i64 {
     return count
 }
 
-pub fn cloneBytes(src: &Vec<u8>): Vec<u8> {
-    var v: Vec<u8> = Vec.new()
-    var i: i64 = 0
-    while i < src.len {
-        v.push(src[i])
-        i = i + 1
-    }
-    return v
-}
-
 fn vecZerosFx(n: i64): Vec<u8> {
     var v: Vec<u8> = Vec.new()
     var i: i64 = 0
@@ -120,8 +109,8 @@ fn vecZerosFx(n: i64): Vec<u8> {
 // Construct a GSU over a clone of the cart ROM. nRamBanks=2 → 128KB game-pak RAM
 // (Star Fox uses one bank; Yoshi's Island two). Pipe primed with a NOP (0x01) as on
 // real hardware, so the first executed step restores the fetch-pipeline invariant.
-pub fn fxNew(romClone: Vec<u8>): Fx {
-    let len = romClone.len
+pub fn fxNew(rom: &Vec<u8>): Fx {
+    let len = rom.len
     var mask: i64 = 1
     while mask < len {
         mask = mask << 1
@@ -146,7 +135,7 @@ pub fn fxNew(romClone: Vec<u8>): Fx {
         running: false, irqPending: false, alt1: false, alt2: false, bflag: false, sreg: 0, dreg: 0,
         pbr: 0, rombr: 0, rambr: 0, cbr: 0, color: 0, por: 0, scbr: 0, scmr: 0, cfgr: 0, clsr: 0, bramr: 0,
         romBuffer: 0, pipe: 1, cacheActive: false, lastRamAdr: 0,
-        rom: romClone, romMask: mask, nRomBanks: nrb,
+        romMask: mask, nRomBanks: nrb,
         ram: vecZerosFx(0x20000), ramMask: 0x1FFFF, nRamBanks: 2,
         cache: vecZerosFx(512),
         mode: 0, screenHeight: 128, realHeight: 128
@@ -204,22 +193,22 @@ fn gsuRomOffset(fx: &Fx, bank: i64, addr: i64): i64 {
     return off & fx.romMask
 }
 
-fn gsuRomByte(fx: &Fx, bank: i64, addr: i64): i64 {
+fn gsuRomByte(fx: &Fx, rom: &Vec<u8>, bank: i64, addr: i64): i64 {
     let o = gsuRomOffset(fx, bank, addr)
-    if o < fx.rom.len {
-        return fx.rom[o] as i64
+    if o < rom.len {
+        return rom[o] as i64
     }
     return 0
 }
 
 // Program fetch: from ROM (PBR is a ROM bank) or game-pak RAM (PBR $70-$73).
-fn prgByte(fx: &Fx, addr: i64): i64 {
+fn prgByte(fx: &Fx, rom: &Vec<u8>, addr: i64): i64 {
     let b = fx.pbr & 0x7F
     if b >= 0x70 && b <= 0x73 {
         let idx = (((b & 3) % fx.nRamBanks) << 16) + (addr & 0xFFFF)
         return fx.ram[idx & fx.ramMask] as i64
     }
-    return gsuRomByte(fx, fx.pbr, addr)
+    return gsuRomByte(fx, rom, fx.pbr, addr)
 }
 
 fn gsuRamIdx(fx: &Fx, adr: i64): i64 {
@@ -235,8 +224,8 @@ fn ramWrite(fx: &mut Fx, adr: i64, v: i64): void {
 }
 
 // --- pipeline primitives ---
-fn fetchPipe(fx: &mut Fx): void {
-    fx.pipe = prgByte(fx, fx.reg[15] & 0xFFFF)
+fn fetchPipe(fx: &mut Fx, rom: &Vec<u8>): void {
+    fx.pipe = prgByte(fx, rom, fx.reg[15] & 0xFFFF)
 }
 
 fn r15inc(fx: &mut Fx): void {
@@ -251,15 +240,15 @@ fn clrflags(fx: &mut Fx): void {
     fx.dreg = 0
 }
 
-fn readR14(fx: &mut Fx): void {
-    fx.romBuffer = gsuRomByte(fx, fx.rombr, fx.reg[14] & 0xFFFF)
+fn readR14(fx: &mut Fx, rom: &Vec<u8>): void {
+    fx.romBuffer = gsuRomByte(fx, rom, fx.rombr, fx.reg[14] & 0xFFFF)
 }
 
 // Write the destination register (auto-reloads the ROM buffer when R14 is the dest).
-fn setDreg(fx: &mut Fx, v: i64): void {
+fn setDreg(fx: &mut Fx, rom: &Vec<u8>, v: i64): void {
     fx.reg[fx.dreg] = v & 0xFFFFFFFF
     if fx.dreg == 14 {
-        readR14(&mut fx)
+        readR14(&mut fx, rom)
     }
 }
 
@@ -404,13 +393,13 @@ fn fxPlot(fx: &mut Fx): void {
 }
 
 // 4c ALT1 - rpix: read the framebuffer color at (R1,R2) into DREG.
-fn fxRpix(fx: &mut Fx): void {
+fn fxRpix(fx: &mut Fx, rom: &Vec<u8>): void {
     let x = fx.reg[1] & 0xFF
     let y = fx.reg[2] & 0xFF
     r15inc(&mut fx)
 
     if y >= fx.screenHeight {
-        setDreg(&mut fx, 0)
+        setDreg(&mut fx, rom, 0)
         clrflags(&mut fx)
         return
     }
@@ -427,7 +416,7 @@ fn fxRpix(fx: &mut Fx): void {
         }
         p = p + 1
     }
-    setDreg(&mut fx, v)
+    setDreg(&mut fx, rom, v)
     fx.vZero = v
     clrflags(&mut fx)
 }
@@ -457,10 +446,10 @@ fn fxCache(fx: &mut Fx): void {
 }
 
 // Branch helper: read the signed offset operand, advance, and optionally take it.
-fn fxBranch(fx: &mut Fx, take: bool): void {
+fn fxBranch(fx: &mut Fx, rom: &Vec<u8>, take: bool): void {
     let v = fx.pipe
     r15inc(&mut fx)
-    fetchPipe(&mut fx)
+    fetchPipe(&mut fx, rom)
     if take {
         fx.reg[15] = (fx.reg[15] + sex8(v)) & 0xFFFF
     } else {
@@ -488,9 +477,9 @@ fn testCY(fx: &Fx): bool {
 // exactly one opcode. Mirrors FX_STEP: read opcode from pipe, refetch pipe from R15,
 // then run — with operand bytes pulled from the pipe as each op needs them.
 // R15 min/max window over the current run — a tight window means a stuck loop.
-fn fxStepOne(fx: &mut Fx): void {
+fn fxStepOne(fx: &mut Fx, rom: &Vec<u8>): void {
     let op = fx.pipe
-    fetchPipe(&mut fx)
+    fetchPipe(&mut fx, rom)
     var alt: i64 = 0
     if fx.alt1 {
         alt = alt | 1
@@ -513,7 +502,7 @@ fn fxStepOne(fx: &mut Fx): void {
             fx.vCarry = s & 1
             let v = (s & 0xFFFF) >> 1
             r15inc(&mut fx)
-            setDreg(&mut fx, v)
+            setDreg(&mut fx, rom, v)
             fx.vSign = v
             fx.vZero = v
             clrflags(&mut fx)
@@ -522,32 +511,32 @@ fn fxStepOne(fx: &mut Fx): void {
             let v = ((s << 1) + fx.vCarry) & 0xFFFF
             fx.vCarry = (s >> 15) & 1
             r15inc(&mut fx)
-            setDreg(&mut fx, v)
+            setDreg(&mut fx, rom, v)
             fx.vSign = v
             fx.vZero = v
             clrflags(&mut fx)
         } else if op == 0x05 { // bra
-            fxBranch(&mut fx, true)
+            fxBranch(&mut fx, rom, true)
         } else if op == 0x06 { // bge
-            fxBranch(&mut fx, testS(fx) == testOV(fx))
+            fxBranch(&mut fx, rom, testS(fx) == testOV(fx))
         } else if op == 0x07 { // blt
-            fxBranch(&mut fx, testS(fx) != testOV(fx))
+            fxBranch(&mut fx, rom, testS(fx) != testOV(fx))
         } else if op == 0x08 { // bne
-            fxBranch(&mut fx,!testZ(fx))
+            fxBranch(&mut fx, rom, !testZ(fx))
         } else if op == 0x09 { // beq
-            fxBranch(&mut fx, testZ(fx))
+            fxBranch(&mut fx, rom, testZ(fx))
         } else if op == 0x0A { // bpl
-            fxBranch(&mut fx,!testS(fx))
+            fxBranch(&mut fx, rom, !testS(fx))
         } else if op == 0x0B { // bmi
-            fxBranch(&mut fx, testS(fx))
+            fxBranch(&mut fx, rom, testS(fx))
         } else if op == 0x0C { // bcc
-            fxBranch(&mut fx,!testCY(fx))
+            fxBranch(&mut fx, rom, !testCY(fx))
         } else if op == 0x0D { // bcs
-            fxBranch(&mut fx, testCY(fx))
+            fxBranch(&mut fx, rom, testCY(fx))
         } else if op == 0x0E { // bvc
-            fxBranch(&mut fx,!testOV(fx))
+            fxBranch(&mut fx, rom, !testOV(fx))
         } else { // 0x0F bvs
-            fxBranch(&mut fx, testOV(fx))
+            fxBranch(&mut fx, rom, testOV(fx))
         }
         return
     }
@@ -561,7 +550,7 @@ fn fxStepOne(fx: &mut Fx): void {
             fx.reg[n] = sregVal(fx) & 0xFFFFFFFF
             clrflags(&mut fx)
             if n == 14 {
-                readR14(&mut fx)
+                readR14(&mut fx, rom)
             }
             if n != 15 {
                 r15inc(&mut fx)
@@ -633,11 +622,11 @@ fn fxStepOne(fx: &mut Fx): void {
                 v = v | (ramRead(fx, adr ^ 1) << 8)
             }
             r15inc(&mut fx)
-            setDreg(&mut fx, v)
+            setDreg(&mut fx, rom, v)
             clrflags(&mut fx)
         } else if op == 0x4C { // plot / rpix
             if alt == 1 || alt == 3 {
-                fxRpix(&mut fx)
+                fxRpix(&mut fx, rom)
             } else {
                 fxPlot(&mut fx)
             }
@@ -645,7 +634,7 @@ fn fxStepOne(fx: &mut Fx): void {
             let s = sregVal(fx)
             let v = (((s & 0xFF) << 8) | ((s >> 8) & 0xFF))
             r15inc(&mut fx)
-            setDreg(&mut fx, v)
+            setDreg(&mut fx, rom, v)
             fx.vSign = v
             fx.vZero = v
             clrflags(&mut fx)
@@ -669,7 +658,7 @@ fn fxStepOne(fx: &mut Fx): void {
         } else { // 0x4F not
             let v = (~sregVal(fx)) & 0xFFFFFFFF
             r15inc(&mut fx)
-            setDreg(&mut fx, v)
+            setDreg(&mut fx, rom, v)
             fx.vSign = v
             fx.vZero = v
             clrflags(&mut fx)
@@ -708,7 +697,7 @@ fn fxStepOne(fx: &mut Fx): void {
         fx.vSign = t
         fx.vZero = t
         r15inc(&mut fx)
-        setDreg(&mut fx, t)
+        setDreg(&mut fx, rom, t)
         clrflags(&mut fx)
         return
     }
@@ -743,7 +732,7 @@ fn fxStepOne(fx: &mut Fx): void {
         fx.vZero = t
         r15inc(&mut fx)
         if alt != 3 { // cmp discards the result
-            setDreg(&mut fx, t)
+            setDreg(&mut fx, rom, t)
         }
         clrflags(&mut fx)
         return
@@ -754,7 +743,7 @@ fn fxStepOne(fx: &mut Fx): void {
         if op == 0x70 { // merge
             let v = (fx.reg[7] & 0xFF00) | ((fx.reg[8] & 0xFF00) >> 8)
             r15inc(&mut fx)
-            setDreg(&mut fx, v)
+            setDreg(&mut fx, rom, v)
             fx.vOverflow = (v & 0xC0C0) << 16
             fx.vZero = if (v & 0xF0F0) != 0 { // Snes9x stores !(v&0xf0f0)
                 0
@@ -783,7 +772,7 @@ fn fxStepOne(fx: &mut Fx): void {
             }
             v = v & 0xFFFFFFFF
             r15inc(&mut fx)
-            setDreg(&mut fx, v)
+            setDreg(&mut fx, rom, v)
             fx.vSign = v
             fx.vZero = v
             clrflags(&mut fx)
@@ -807,7 +796,7 @@ fn fxStepOne(fx: &mut Fx): void {
         }
         v = v & 0xFFFFFFFF
         r15inc(&mut fx)
-        setDreg(&mut fx, v)
+        setDreg(&mut fx, rom, v)
         fx.vSign = v
         fx.vZero = v
         clrflags(&mut fx)
@@ -828,7 +817,7 @@ fn fxStepOne(fx: &mut Fx): void {
         } else if op == 0x95 { // sex
             let v = (sex8(sregVal(fx))) & 0xFFFFFFFF
             r15inc(&mut fx)
-            setDreg(&mut fx, v)
+            setDreg(&mut fx, rom, v)
             fx.vSign = v
             fx.vZero = v
             clrflags(&mut fx)
@@ -847,7 +836,7 @@ fn fxStepOne(fx: &mut Fx): void {
                 v = ashr1(sex16(s)) & 0xFFFFFFFF
             }
             r15inc(&mut fx)
-            setDreg(&mut fx, v)
+            setDreg(&mut fx, rom, v)
             fx.vSign = v
             fx.vZero = v
             clrflags(&mut fx)
@@ -856,7 +845,7 @@ fn fxStepOne(fx: &mut Fx): void {
             let v = ((s & 0xFFFF) >> 1) | (fx.vCarry << 15)
             fx.vCarry = s & 1
             r15inc(&mut fx)
-            setDreg(&mut fx, v)
+            setDreg(&mut fx, rom, v)
             fx.vSign = v
             fx.vZero = v
             clrflags(&mut fx)
@@ -875,7 +864,7 @@ fn fxStepOne(fx: &mut Fx): void {
         } else if op == 0x9E { // lob
             let v = sregVal(fx) & 0xFF
             r15inc(&mut fx)
-            setDreg(&mut fx, v)
+            setDreg(&mut fx, rom, v)
             fx.vSign = v << 8
             fx.vZero = v << 8
             clrflags(&mut fx)
@@ -886,7 +875,7 @@ fn fxStepOne(fx: &mut Fx): void {
                 fx.reg[4] = c
             }
             r15inc(&mut fx)
-            setDreg(&mut fx, v)
+            setDreg(&mut fx, rom, v)
             fx.vSign = v
             fx.vZero = v
             fx.vCarry = (c >> 15) & 1
@@ -901,11 +890,11 @@ fn fxStepOne(fx: &mut Fx): void {
         if alt == 0 { // ibt rn, #pp
             let v = fx.pipe
             r15inc(&mut fx)
-            fetchPipe(&mut fx)
+            fetchPipe(&mut fx, rom)
             r15inc(&mut fx)
             fx.reg[n] = sex8(v) & 0xFFFFFFFF
             if n == 14 {
-                readR14(&mut fx) // writing R14 (re)loads the ROM buffer (fx_ibt_r14)
+                readR14(&mut fx, rom) // writing R14 (re)loads the ROM buffer (fx_ibt_r14)
             }
             clrflags(&mut fx)
         } else if alt == 2 { // sms (yy), rn
@@ -913,7 +902,7 @@ fn fxStepOne(fx: &mut Fx): void {
             let adr = (fx.pipe << 1)
             fx.lastRamAdr = adr
             r15inc(&mut fx)
-            fetchPipe(&mut fx)
+            fetchPipe(&mut fx, rom)
             ramWrite(&mut fx, adr, v)
             ramWrite(&mut fx, adr + 1, v >> 8)
             clrflags(&mut fx)
@@ -922,13 +911,13 @@ fn fxStepOne(fx: &mut Fx): void {
             let adr = (fx.pipe << 1)
             fx.lastRamAdr = adr
             r15inc(&mut fx)
-            fetchPipe(&mut fx)
+            fetchPipe(&mut fx, rom)
             r15inc(&mut fx)
             var v = ramRead(fx, adr)
             v = v | (ramRead(fx, adr + 1) << 8)
             fx.reg[n] = v & 0xFFFFFFFF
             if n == 14 {
-                readR14(&mut fx) // fx_lms_r14
+                readR14(&mut fx, rom) // fx_lms_r14
             }
             clrflags(&mut fx)
         }
@@ -941,7 +930,7 @@ fn fxStepOne(fx: &mut Fx): void {
         if fx.bflag {
             let v = fx.reg[n]
             r15inc(&mut fx)
-            setDreg(&mut fx, v)
+            setDreg(&mut fx, rom, v)
             fx.vOverflow = (v & 0x80) << 16
             fx.vSign = v
             fx.vZero = v
@@ -958,7 +947,7 @@ fn fxStepOne(fx: &mut Fx): void {
         if op == 0xC0 { // hib
             let v = (sregVal(fx) >> 8) & 0xFF
             r15inc(&mut fx)
-            setDreg(&mut fx, v)
+            setDreg(&mut fx, rom, v)
             fx.vSign = v << 8
             fx.vZero = v << 8
             clrflags(&mut fx)
@@ -977,7 +966,7 @@ fn fxStepOne(fx: &mut Fx): void {
             }
             v = v & 0xFFFFFFFF
             r15inc(&mut fx)
-            setDreg(&mut fx, v)
+            setDreg(&mut fx, rom, v)
             fx.vSign = v
             fx.vZero = v
             clrflags(&mut fx)
@@ -993,7 +982,7 @@ fn fxStepOne(fx: &mut Fx): void {
             fx.vSign = fx.reg[n]
             fx.vZero = fx.reg[n]
             if n == 14 {
-                readR14(&mut fx) // fx_inc_r14 — the bytecode-VM dispatch relies on this
+                readR14(&mut fx, rom) // fx_inc_r14 — the bytecode-VM dispatch relies on this
             }
             clrflags(&mut fx)
             r15inc(&mut fx)
@@ -1031,7 +1020,7 @@ fn fxStepOne(fx: &mut Fx): void {
             fx.vSign = fx.reg[n]
             fx.vZero = fx.reg[n]
             if n == 14 {
-                readR14(&mut fx) // fx_dec_r14
+                readR14(&mut fx, rom) // fx_dec_r14
             }
             clrflags(&mut fx)
             r15inc(&mut fx)
@@ -1048,7 +1037,7 @@ fn fxStepOne(fx: &mut Fx): void {
                 v = rb
             }
             r15inc(&mut fx)
-            setDreg(&mut fx, v)
+            setDreg(&mut fx, rom, v)
             clrflags(&mut fx)
         }
         return
@@ -1059,24 +1048,24 @@ fn fxStepOne(fx: &mut Fx): void {
     if alt == 0 { // iwt rn, #xx
         let lo = fx.pipe
         r15inc(&mut fx)
-        fetchPipe(&mut fx)
+        fetchPipe(&mut fx, rom)
         r15inc(&mut fx)
         let hi = fx.pipe
-        fetchPipe(&mut fx)
+        fetchPipe(&mut fx, rom)
         r15inc(&mut fx)
         fx.reg[n] = (lo | (hi << 8)) & 0xFFFFFFFF
         if n == 14 {
-            readR14(&mut fx) // fx_iwt_r14
+            readR14(&mut fx, rom) // fx_iwt_r14
         }
         clrflags(&mut fx)
     } else if alt == 2 { // sm (xx), rn
         let v = fx.reg[n]
         var adr = fx.pipe
         r15inc(&mut fx)
-        fetchPipe(&mut fx)
+        fetchPipe(&mut fx, rom)
         r15inc(&mut fx)
         adr = adr | (fx.pipe << 8)
-        fetchPipe(&mut fx)
+        fetchPipe(&mut fx, rom)
         fx.lastRamAdr = adr
         ramWrite(&mut fx, adr, v)
         ramWrite(&mut fx, adr ^ 1, v >> 8)
@@ -1085,17 +1074,17 @@ fn fxStepOne(fx: &mut Fx): void {
     } else { // lm rn, (xx)  (alt1 and alt3)
         var adr = fx.pipe
         r15inc(&mut fx)
-        fetchPipe(&mut fx)
+        fetchPipe(&mut fx, rom)
         r15inc(&mut fx)
         adr = adr | (fx.pipe << 8)
-        fetchPipe(&mut fx)
+        fetchPipe(&mut fx, rom)
         r15inc(&mut fx)
         fx.lastRamAdr = adr
         var v = ramRead(fx, adr)
         v = v | (ramRead(fx, adr ^ 1) << 8)
         fx.reg[n] = v & 0xFFFFFFFF
         if n == 14 {
-            readR14(&mut fx) // fx_lm_r14
+            readR14(&mut fx, rom) // fx_lm_r14
         }
         clrflags(&mut fx)
     }
@@ -1103,14 +1092,14 @@ fn fxStepOne(fx: &mut Fx): void {
 
 // Run up to maxSteps GSU instructions (stops early on STOP). Called in bursts from
 // the system frame loop while the GO flag is set.
-pub fn fxRun(fx: &mut Fx, maxSteps: i64): i64 {
+pub fn fxRun(fx: &mut Fx, rom: &Vec<u8>, maxSteps: i64): i64 {
     if !fx.running {
         return 0
     }
     fxUpdateScreen(&mut fx)
     var i: i64 = 0
     while i < maxSteps && fx.running {
-        fxStepOne(&mut fx)
+        fxStepOne(&mut fx, rom)
         i = i + 1
     }
     fxDbgSteps = fxDbgSteps + i
@@ -1337,7 +1326,7 @@ pub fn fxTestRun(program: &Vec<u8>, seed: &Vec<i64>, carry: i64, steps: i64): Ve
     fx.running = true
     var n: i64 = 0
     while n < steps && fx.running {
-        fxStepOne(&mut fx)
+        fxStepOne(&mut fx, rom)
         n = n + 1
     }
     var out: Vec<i64> = Vec.new()

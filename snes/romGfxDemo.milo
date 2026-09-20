@@ -26,14 +26,14 @@ fn ldaSta(rom: &mut Vec<u8>, o: i64, imm: i64, addr: i64): i64 {
 // Configure DMA channel 0 and fire it.
 fn dma(rom: &mut Vec<u8>, o: i64, dmap: i64, bbad: i64, src: i64, size: i64): i64 {
     var p = o
-    p = ldaSta(rom, p, dmap, 0x4300)
-    p = ldaSta(rom, p, bbad, 0x4301)
-    p = ldaSta(rom, p, src & 0xFF, 0x4302)
-    p = ldaSta(rom, p, (src >> 8) & 0xFF, 0x4303)
-    p = ldaSta(rom, p, 0x00, 0x4304)
-    p = ldaSta(rom, p, size & 0xFF, 0x4305)
-    p = ldaSta(rom, p, (size >> 8) & 0xFF, 0x4306)
-    p = ldaSta(rom, p, 0x01, 0x420B)
+    p = ldaSta(&mut rom, p, dmap, 0x4300)
+    p = ldaSta(&mut rom, p, bbad, 0x4301)
+    p = ldaSta(&mut rom, p, src & 0xFF, 0x4302)
+    p = ldaSta(&mut rom, p, (src >> 8) & 0xFF, 0x4303)
+    p = ldaSta(&mut rom, p, 0x00, 0x4304)
+    p = ldaSta(&mut rom, p, size & 0xFF, 0x4305)
+    p = ldaSta(&mut rom, p, (size >> 8) & 0xFF, 0x4306)
+    p = ldaSta(&mut rom, p, 0x01, 0x420B)
     return p
 }
 
@@ -41,18 +41,18 @@ fn main(): i32 {
     var rom = vecZeros(0x8000)
     var o: i64 = 0
     // CGADD=0 then DMA 32B palette ($8200) -> CGDATA ($2122)
-    o = ldaSta(rom, o, 0x00, 0x2121)
-    o = dma(rom, o, 0x00, 0x22, 0x8200, 0x20)
+    o = ldaSta(&mut rom, o, 0x00, 0x2121)
+    o = dma(&mut rom, o, 0x00, 0x22, 0x8200, 0x20)
     // VMAIN=$80, VMADD=0, DMA 32B tile ($8300) -> VMDATA ($2118/$2119)
-    o = ldaSta(rom, o, 0x80, 0x2115)
-    o = ldaSta(rom, o, 0x00, 0x2116)
-    o = ldaSta(rom, o, 0x00, 0x2117)
-    o = dma(rom, o, 0x01, 0x18, 0x8300, 0x20)
+    o = ldaSta(&mut rom, o, 0x80, 0x2115)
+    o = ldaSta(&mut rom, o, 0x00, 0x2116)
+    o = ldaSta(&mut rom, o, 0x00, 0x2117)
+    o = dma(&mut rom, o, 0x01, 0x18, 0x8300, 0x20)
     // BG1: mode 1, tilemap base word $0400, char base word 0, brightness 15
-    o = ldaSta(rom, o, 0x01, 0x2105) // BGMODE
-    o = ldaSta(rom, o, 0x04, 0x2107) // BG1SC -> tilemap word $0400
-    o = ldaSta(rom, o, 0x00, 0x210B) // BG12NBA -> char base 0
-    o = ldaSta(rom, o, 0x0F, 0x2100) // INIDISP brightness 15
+    o = ldaSta(&mut rom, o, 0x01, 0x2105) // BGMODE
+    o = ldaSta(&mut rom, o, 0x04, 0x2107) // BG1SC -> tilemap word $0400
+    o = ldaSta(&mut rom, o, 0x00, 0x210B) // BG12NBA -> char base 0
+    o = ldaSta(&mut rom, o, 0x0F, 0x2100) // INIDISP brightness 15
     rom[o] = 0xEA as u8 // NOP (loop)
     rom[o + 1] = 0x80 as u8
     rom[o + 2] = 0xFD as u8 // BRA -3
@@ -100,7 +100,7 @@ fn main(): i32 {
     var cpu = newCpuReset(m)
     var f: i64 = 0
     while f < 3 {
-        stepFrame(cpu, m)
+        stepFrame(&mut cpu, &mut m)
         f = f + 1
     }
 
@@ -110,7 +110,7 @@ fn main(): i32 {
         fb.push(0)
         i = i + 1
     }
-    renderFrame(m.ppu, fb)
+    renderFrame(m.ppu, &mut fb)
 
     var out = String.withCapacity(200000)
     let hdr = "P6\n256 224\n255\n"

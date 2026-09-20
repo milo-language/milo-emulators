@@ -22,7 +22,7 @@ from "./shared/menucore" import {
 fn main(): i32 {
     var rows: Vec<Row> = []
     var sel: Vec<i64> = []
-    buildRows(rows, sel)
+    buildRows(&mut rows, &mut sel)
 
     var selIdx: i64 = 0
     let argv = args()
@@ -52,7 +52,7 @@ fn main(): i32 {
     let font = fontChars()
     let glyphs = fontGlyphs()
     var fb: [u32; 230400] = [0; 230400]
-    render(fb, rows, selRow, scrollTop, visN, font, glyphs)
+    render(&mut fb, rows, selRow, scrollTop, visN, font, glyphs)
 
     var data: string = ""
     var i: i64 = 0

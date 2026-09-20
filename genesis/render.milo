@@ -252,7 +252,7 @@ pub fn renderIndexed(m: &Mem): Vec<i64> {
         spr.push(-1)
         s = s + 1
     }
-    drawSprites(m, spr, width, height)
+    drawSprites(m, &mut spr, width, height)
 
     // Composite per the Genesis layer order (front to back): sprite-hi, A-hi,
     // B-hi, sprite-lo, A-lo, B-lo, backdrop. The window plane replaces A.
@@ -374,7 +374,7 @@ fn drawSprites(m: &Mem, fb: &mut Vec<i64>, width: i64, height: i64) {
                 } else {
                     row
                 }
-                drawSprTile(m, fb, width, height, tile, sx + destCol * 8, sy + destRow * 8, pal, hflip, vflip, pri)
+                drawSprTile(m, &mut fb, width, height, tile, sx + destCol * 8, sy + destRow * 8, pal, hflip, vflip, pri)
                 row = row + 1
             }
             col = col + 1

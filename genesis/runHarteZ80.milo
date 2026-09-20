@@ -43,33 +43,33 @@ fn nextTok(t: &mut Toks): i64 {
 // Load a state record into the CPU (regs then ram). Returns nothing; leaves the
 // stream positioned after the ram list.
 fn loadState(cpu: &mut Z80, t: &mut Toks) {
-    cpu.a = nextTok(t)
-    cpu.b = nextTok(t)
-    cpu.c = nextTok(t)
-    cpu.d = nextTok(t)
-    cpu.e = nextTok(t)
-    cpu.f = nextTok(t)
-    cpu.h = nextTok(t)
-    cpu.l = nextTok(t)
-    cpu.i = nextTok(t)
-    cpu.r = nextTok(t)
-    cpu.pc = nextTok(t)
-    cpu.sp = nextTok(t)
-    cpu.ix = nextTok(t)
-    cpu.iy = nextTok(t)
-    cpu.af_ = nextTok(t)
-    cpu.bc_ = nextTok(t)
-    cpu.de_ = nextTok(t)
-    cpu.hl_ = nextTok(t)
-    cpu.iff1 = nextTok(t) != 0
-    cpu.iff2 = nextTok(t) != 0
-    cpu.im = nextTok(t)
-    cpu.wz = nextTok(t)
-    let ramN = nextTok(t)
+    cpu.a = nextTok(&mut t)
+    cpu.b = nextTok(&mut t)
+    cpu.c = nextTok(&mut t)
+    cpu.d = nextTok(&mut t)
+    cpu.e = nextTok(&mut t)
+    cpu.f = nextTok(&mut t)
+    cpu.h = nextTok(&mut t)
+    cpu.l = nextTok(&mut t)
+    cpu.i = nextTok(&mut t)
+    cpu.r = nextTok(&mut t)
+    cpu.pc = nextTok(&mut t)
+    cpu.sp = nextTok(&mut t)
+    cpu.ix = nextTok(&mut t)
+    cpu.iy = nextTok(&mut t)
+    cpu.af_ = nextTok(&mut t)
+    cpu.bc_ = nextTok(&mut t)
+    cpu.de_ = nextTok(&mut t)
+    cpu.hl_ = nextTok(&mut t)
+    cpu.iff1 = nextTok(&mut t) != 0
+    cpu.iff2 = nextTok(&mut t) != 0
+    cpu.im = nextTok(&mut t)
+    cpu.wz = nextTok(&mut t)
+    let ramN = nextTok(&mut t)
     var j: i64 = 0
     while j < ramN {
-        let addr = nextTok(t)
-        let val = nextTok(t)
+        let addr = nextTok(&mut t)
+        let val = nextTok(&mut t)
         cpu.mem[addr & 0xFFFF] = (val & 0xFF) as u8
         j = j + 1
     }
@@ -77,28 +77,28 @@ fn loadState(cpu: &mut Z80, t: &mut Toks) {
 
 // Compare CPU against the final record; returns "" on match or first mismatch.
 fn checkFinal(cpu: &Z80, t: &mut Toks): string {
-    let fa = nextTok(t)
-    let fb = nextTok(t)
-    let fc = nextTok(t)
-    let fd = nextTok(t)
-    let fe = nextTok(t)
-    let ff = nextTok(t)
-    let fh = nextTok(t)
-    let fl = nextTok(t)
-    let fi = nextTok(t)
-    let fr = nextTok(t)
-    let fpc = nextTok(t)
-    let fsp = nextTok(t)
-    let fix = nextTok(t)
-    let fiy = nextTok(t)
-    let faf = nextTok(t)
-    let fbc = nextTok(t)
-    let fde = nextTok(t)
-    let fhl = nextTok(t)
-    let fiff1 = nextTok(t)
-    let fiff2 = nextTok(t)
-    let fim = nextTok(t)
-    let fwz = nextTok(t)
+    let fa = nextTok(&mut t)
+    let fb = nextTok(&mut t)
+    let fc = nextTok(&mut t)
+    let fd = nextTok(&mut t)
+    let fe = nextTok(&mut t)
+    let ff = nextTok(&mut t)
+    let fh = nextTok(&mut t)
+    let fl = nextTok(&mut t)
+    let fi = nextTok(&mut t)
+    let fr = nextTok(&mut t)
+    let fpc = nextTok(&mut t)
+    let fsp = nextTok(&mut t)
+    let fix = nextTok(&mut t)
+    let fiy = nextTok(&mut t)
+    let faf = nextTok(&mut t)
+    let fbc = nextTok(&mut t)
+    let fde = nextTok(&mut t)
+    let fhl = nextTok(&mut t)
+    let fiff1 = nextTok(&mut t)
+    let fiff2 = nextTok(&mut t)
+    let fim = nextTok(&mut t)
+    let fwz = nextTok(&mut t)
 
     var mm = ""
     if cpu.a != fa {
@@ -131,11 +131,11 @@ fn checkFinal(cpu: &Z80, t: &mut Toks): string {
         mm = "IY " + hx(cpu.iy) + "!=" + hx(fiy)
     }
 
-    let ramN = nextTok(t)
+    let ramN = nextTok(&mut t)
     var j: i64 = 0
     while j < ramN {
-        let addr = nextTok(t)
-        let want = nextTok(t)
+        let addr = nextTok(&mut t)
+        let want = nextTok(&mut t)
         let got = cpu.mem[addr & 0xFFFF] as i64
         if got != want && mm == "" {
             mm = "RAM[" + hx(addr) + "] " + hx(got) + "!=" + hx(want)
@@ -164,16 +164,16 @@ fn main(): i32 {
     var t = Toks {
         s: raw, pos: 0
     }
-    let total = nextTok(t)
+    let total = nextTok(&mut t)
     var cpu = newZ80()
     var passed: i64 = 0
     var failed: i64 = 0
     var firstFail = ""
     var i: i64 = 0
     while i < total {
-        loadState(cpu, t)
-        let ran = stepZ80(cpu)
-        let mm = checkFinal(cpu, t)
+        loadState(&mut cpu, &mut t)
+        let ran = stepZ80(&mut cpu)
+        let mm = checkFinal(cpu, &mut t)
         if !ran {
             failed = failed + 1
             if firstFail == "" {

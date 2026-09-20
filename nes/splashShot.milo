@@ -17,7 +17,7 @@ fn main(): i32 {
         return 1
     }
     var fb: [u32; 61440] = [0; 61440]
-    renderSplash(fb)
+    renderSplash(&mut fb)
     var data: string = ""
     var i: i64 = 0
     while i < 61440 {

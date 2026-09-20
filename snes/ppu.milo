@@ -852,39 +852,39 @@ fn renderScreenBGs(p: &Ppu, fb: &mut Vec<i64>, bright: i64, enable: i64, screenD
     if mode == 0 {
         // Mode 0: four 2bpp BGs; palette groups at cgram 0/32/64/96.
         if en4 {
-            renderBGLayer(p, fb, bright, p.bgsc3, ch4, p.bghofs[3], p.bgvofs[3], 2, 96, 3, screenDisable, -1, cgMain)
+            renderBGLayer(p, &mut fb, bright, p.bgsc3, ch4, p.bghofs[3], p.bgvofs[3], 2, 96, 3, screenDisable, -1, cgMain)
         }
         if en3 {
-            renderBGLayer(p, fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 64, 2, screenDisable, -1, cgMain)
+            renderBGLayer(p, &mut fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 64, 2, screenDisable, -1, cgMain)
         }
         if en2 {
-            renderBGLayer(p, fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 2, 32, 1, screenDisable, -1, cgMain)
+            renderBGLayer(p, &mut fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 2, 32, 1, screenDisable, -1, cgMain)
         }
         if en1 {
-            renderBGLayer(p, fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 2, 0, 0, screenDisable, -1, cgMain)
+            renderBGLayer(p, &mut fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 2, 0, 0, screenDisable, -1, cgMain)
         }
     } else if mode == 7 {
         if en1 {
-            renderMode7(p, fb, bright)
+            renderMode7(p, &mut fb, bright)
         }
     } else if mode == 3 {
         // Mode 3: BG1 8bpp (direct 256-color), BG2 4bpp.
         if en2 {
-            renderBGLayer(p, fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 4, 0, 1, screenDisable, -1, cgMain)
+            renderBGLayer(p, &mut fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 4, 0, 1, screenDisable, -1, cgMain)
         }
         if en1 {
-            renderBGLayer(p, fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 8, 0, 0, screenDisable, -1, cgMain)
+            renderBGLayer(p, &mut fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 8, 0, 0, screenDisable, -1, cgMain)
         }
     } else {
         // Mode 1 (and a reasonable default for 2/4-7): BG3 2bpp, BG2/BG1 4bpp.
         if en3 {
-            renderBGLayer(p, fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, screenDisable, -1, cgMain)
+            renderBGLayer(p, &mut fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, screenDisable, -1, cgMain)
         }
         if en2 {
-            renderBGLayer(p, fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 4, 0, 1, screenDisable, -1, cgMain)
+            renderBGLayer(p, &mut fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 4, 0, 1, screenDisable, -1, cgMain)
         }
         if en1 {
-            renderBGLayer(p, fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 4, 0, 0, screenDisable, -1, cgMain)
+            renderBGLayer(p, &mut fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 4, 0, 0, screenDisable, -1, cgMain)
         }
     }
 }
@@ -1008,42 +1008,42 @@ fn renderMode1Main(p: &Ppu, fb: &mut Vec<i64>, bright: i64): void {
     // BG3 low-priority: front of nothing (very back) when BG3-priority is off; when
     // on, BG3 high-priority instead jumps to the very front (drawn last below).
     if en3 && !bg3High {
-        renderBGLayer(p, fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, d, 0, false)
+        renderBGLayer(p, &mut fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, d, 0, false)
     }
     if enObj {
-        renderSprites(p, fb, bright, 0)
+        renderSprites(p, &mut fb, bright, 0)
     }
     if en3 {
         // BG3.1 sits here only when BG3-priority is off; when on it's frontmost.
         if !bg3High {
-            renderBGLayer(p, fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, d, 1, false)
+            renderBGLayer(p, &mut fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, d, 1, false)
         } else {
-            renderBGLayer(p, fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, d, 0, false)
+            renderBGLayer(p, &mut fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, d, 0, false)
         }
     }
     if enObj {
-        renderSprites(p, fb, bright, 1)
+        renderSprites(p, &mut fb, bright, 1)
     }
     if en2 {
-        renderBGLayer(p, fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 4, 0, 1, d, 0, false)
+        renderBGLayer(p, &mut fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 4, 0, 1, d, 0, false)
     }
     if en1 {
-        renderBGLayer(p, fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 4, 0, 0, d, 0, false)
+        renderBGLayer(p, &mut fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 4, 0, 0, d, 0, false)
     }
     if enObj {
-        renderSprites(p, fb, bright, 2)
+        renderSprites(p, &mut fb, bright, 2)
     }
     if en2 {
-        renderBGLayer(p, fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 4, 0, 1, d, 1, false)
+        renderBGLayer(p, &mut fb, bright, p.bgsc1, ch2, p.bghofs[1], p.bgvofs[1], 4, 0, 1, d, 1, false)
     }
     if en1 {
-        renderBGLayer(p, fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 4, 0, 0, d, 1, false)
+        renderBGLayer(p, &mut fb, bright, p.bgsc0, ch1, p.bghofs[0], p.bgvofs[0], 4, 0, 0, d, 1, false)
     }
     if enObj {
-        renderSprites(p, fb, bright, 3)
+        renderSprites(p, &mut fb, bright, 3)
     }
     if en3 && bg3High { // BG3 high-priority tiles are frontmost (SMW HUD)
-        renderBGLayer(p, fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, d, 1, false)
+        renderBGLayer(p, &mut fb, bright, p.bgsc2, ch3, p.bghofs[2], p.bgvofs[2], 2, 0, 2, d, 1, false)
     }
 }
 
@@ -1089,14 +1089,14 @@ pub fn renderFrame(p: &Ppu, fb: &mut Vec<i64>): void {
     // priority levels layer correctly; other modes keep the simpler BG-then-OBJ
     // order (sprites all drawn on top).
     if p.ts != 0 {
-        renderScreenBGs(p, fb, bright, p.ts, p.tsw, false)
+        renderScreenBGs(p, &mut fb, bright, p.ts, p.tsw, false)
     }
     if (p.bgmode & 0x07) == 1 {
-        renderMode1Main(p, fb, bright)
+        renderMode1Main(p, &mut fb, bright)
     } else {
-        renderScreenBGs(p, fb, bright, p.tm, p.tmw, true)
+        renderScreenBGs(p, &mut fb, bright, p.tm, p.tmw, true)
         if ((p.tm | p.ts) & 0x10) != 0 {
-            renderSprites(p, fb, bright, -1)
+            renderSprites(p, &mut fb, bright, -1)
         }
     }
 }

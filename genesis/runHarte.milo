@@ -59,18 +59,18 @@ fn nextTok(t: &mut Toks): i64 {
 fn loadRegs(cpu: &mut M68k, m: &mut Mem, t: &mut Toks, withPrefetch: bool): i64 {
     var i: i64 = 0
     while i < 8 {
-        cpu.d[i] = nextTok(t)
+        cpu.d[i] = nextTok(&mut t)
         i = i + 1
     }
     i = 0
     while i < 7 {
-        cpu.a[i] = nextTok(t)
+        cpu.a[i] = nextTok(&mut t)
         i = i + 1
     }
-    let usp = nextTok(t)
-    let ssp = nextTok(t)
-    cpu.sr = nextTok(t)
-    cpu.pc = nextTok(t)
+    let usp = nextTok(&mut t)
+    let ssp = nextTok(&mut t)
+    cpu.sr = nextTok(&mut t)
+    cpu.pc = nextTok(&mut t)
     if (cpu.sr & SR_S) != 0 {
         cpu.a[7] = ssp
         cpu.otherSp = usp
@@ -79,16 +79,16 @@ fn loadRegs(cpu: &mut M68k, m: &mut Mem, t: &mut Toks, withPrefetch: bool): i64 
         cpu.otherSp = ssp
     }
     if withPrefetch {
-        let pf0 = nextTok(t)
-        let pf1 = nextTok(t)
-        writeWord(m, cpu.pc, pf0)
-        writeWord(m, cpu.pc + 2, pf1)
+        let pf0 = nextTok(&mut t)
+        let pf1 = nextTok(&mut t)
+        writeWord(&mut m, cpu.pc, pf0)
+        writeWord(&mut m, cpu.pc + 2, pf1)
     }
-    let ramN = nextTok(t)
+    let ramN = nextTok(&mut t)
     var j: i64 = 0
     while j < ramN {
-        let addr = nextTok(t)
-        let val = nextTok(t)
+        let addr = nextTok(&mut t)
+        let val = nextTok(&mut t)
         m.ram[addr & 0xFFFFFF] = (val & 0xFF) as u8
         m.touched.push(addr & 0xFFFFFF)
         j = j + 1
@@ -110,20 +110,20 @@ fn checkFinal(cpu: &M68k, m: &Mem, t: &mut Toks): string {
     var fd: [i64; 8] = [0, 0, 0, 0, 0, 0, 0, 0]
     var i: i64 = 0
     while i < 8 {
-        fd[i] = nextTok(t)
+        fd[i] = nextTok(&mut t)
         i = i + 1
     }
     var fa: [i64; 7] = [0, 0, 0, 0, 0, 0, 0]
     i = 0
     while i < 7 {
-        fa[i] = nextTok(t)
+        fa[i] = nextTok(&mut t)
         i = i + 1
     }
-    let fusp = nextTok(t)
-    let fssp = nextTok(t)
-    let fsr = nextTok(t)
-    let fpc = nextTok(t)
-    let ramN = nextTok(t)
+    let fusp = nextTok(&mut t)
+    let fssp = nextTok(&mut t)
+    let fsr = nextTok(&mut t)
+    let fpc = nextTok(&mut t)
+    let ramN = nextTok(&mut t)
 
     var mismatch = ""
     i = 0
@@ -160,8 +160,8 @@ fn checkFinal(cpu: &M68k, m: &Mem, t: &mut Toks): string {
     }
     var j: i64 = 0
     while j < ramN {
-        let addr = nextTok(t)
-        let want = nextTok(t) & 0xFF
+        let addr = nextTok(&mut t)
+        let want = nextTok(&mut t) & 0xFF
         let got = m.ram[addr & 0xFFFFFF] as i64
         if got != want && mismatch == "" {
             mismatch = "RAM[" + hex8(addr) + "] got " + hex8(got) + " want " + hex8(want)
@@ -203,7 +203,7 @@ fn main(): i32 {
     var t = Toks {
         s: raw, pos: 0
     }
-    let total = nextTok(t)
+    let total = nextTok(&mut t)
     var cpu = newCpu()
     var m = newMem()
     var passed: i64 = 0
@@ -214,9 +214,9 @@ fn main(): i32 {
         if i >= maxCases {
             break
         }
-        let ok = loadRegs(cpu, m, t, true) >= 0
-        let ran = step(cpu, m)
-        let mismatch = checkFinal(cpu, m, t)
+        let ok = loadRegs(&mut cpu, &mut m, &mut t, true) >= 0
+        let ran = step(&mut cpu, &mut m)
+        let mismatch = checkFinal(cpu, m, &mut t)
         if !ran {
             failed = failed + 1
             if firstFail == "" {
@@ -230,7 +230,7 @@ fn main(): i32 {
                 firstFail = "case " + itoa(i) + ": " + mismatch
             }
         }
-        resetTouched(m)
+        resetTouched(&mut m)
         i = i + 1
     }
 

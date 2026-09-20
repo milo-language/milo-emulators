@@ -78,10 +78,10 @@ pub fn newBus(cart: Cartridge): Bus {
         irqLatch: 0, irqCounter: 0, irqReload: false, irqEnabled: false, irqPending: false, nmiArmed: false
     }
     if bus.mapper == 4 {
-        mmc3UpdateChr(bus) // establish the initial CHR window mapping
+        mmc3UpdateChr(&mut bus) // establish the initial CHR window mapping
     }
     if bus.mapper == 9 {
-        mmc2InitMapper(bus.ppu) // latch-driven CHR banking lives in the PPU
+        mmc2InitMapper(&mut bus.ppu) // latch-driven CHR banking lives in the PPU
     }
     if bus.mapper == 227 {
         bus.m227Hi = 0 // boot the multicart menu (bank 0) at $C000
@@ -101,7 +101,7 @@ fn busRead(bus: &mut Bus, addr: u16): u8 {
     }
     if a < 0x4000 {
         // $2000-$3FFF: 8 PPU registers, mirrored every 8 bytes
-        return ppuRegRead(bus.ppu, a & 0x07)
+        return ppuRegRead(&mut bus.ppu, a & 0x07)
     }
     if a == 0x4016 {
         // controller 1: serial shift-out of the button state, LSB first.
@@ -125,7 +125,7 @@ fn busRead(bus: &mut Bus, addr: u16): u8 {
         return bit | 0x40
     }
     if a == 0x4015 {
-        return apuReadStatus(bus.apu)
+        return apuReadStatus(&mut bus.apu)
     }
     if a >= 0x6000 && a < 0x8000 {
         return bus.wram[a - 0x6000]
@@ -176,7 +176,7 @@ fn busWrite(bus: &mut Bus, addr: u16, val: u8): void {
         return
     }
     if a < 0x4000 {
-        ppuRegWrite(bus.ppu, a & 0x07, val)
+        ppuRegWrite(&mut bus.ppu, a & 0x07, val)
         return
     }
     if a == 0x4014 {
@@ -184,8 +184,8 @@ fn busWrite(bus: &mut Bus, addr: u16, val: u8): void {
         let page = (val as i64) << 8
         var i: i64 = 0
         while i < 256 {
-            let b = busRead(bus, (page + i) as u16)
-            ppuRegWrite(bus.ppu, 4, b) // write through OAMDATA (advances oamAddr)
+            let b = busRead(&mut bus, (page + i) as u16)
+            ppuRegWrite(&mut bus.ppu, 4, b) // write through OAMDATA (advances oamAddr)
             i = i + 1
         }
         return
@@ -201,7 +201,7 @@ fn busWrite(bus: &mut Bus, addr: u16, val: u8): void {
     }
     // APU + frame counter: $4000-$4013, $4015, $4017 ($4014/$4016 handled above).
     if a >= 0x4000 && a <= 0x4017 {
-        apuWrite(bus.apu, a - 0x4000, val)
+        apuWrite(&mut bus.apu, a - 0x4000, val)
         return
     }
     if a >= 0x6000 && a < 0x8000 {
@@ -215,7 +215,7 @@ fn busWrite(bus: &mut Bus, addr: u16, val: u8): void {
             return
         }
         if bus.mapper == 4 {
-            mmc3Write(bus, a, val)
+            mmc3Write(&mut bus, a, val)
             return
         }
         if bus.mapper == 9 {
@@ -226,20 +226,20 @@ fn busWrite(bus: &mut Bus, addr: u16, val: u8): void {
             if a < 0xB000 {
                 bus.mmc2Prg = (val as i64) & 0x0F // PRG select
             } else if a < 0xC000 {
-                mmc2SetChr(bus.ppu, 0, (val as i64) & 0x1F) // CHR $0xxx / FD
+                mmc2SetChr(&mut bus.ppu, 0, (val as i64) & 0x1F) // CHR $0xxx / FD
             } else if a < 0xD000 {
-                mmc2SetChr(bus.ppu, 1, (val as i64) & 0x1F) // CHR $0xxx / FE
+                mmc2SetChr(&mut bus.ppu, 1, (val as i64) & 0x1F) // CHR $0xxx / FE
             } else if a < 0xE000 {
-                mmc2SetChr(bus.ppu, 2, (val as i64) & 0x1F) // CHR $1xxx / FD
+                mmc2SetChr(&mut bus.ppu, 2, (val as i64) & 0x1F) // CHR $1xxx / FD
             } else if a < 0xF000 {
-                mmc2SetChr(bus.ppu, 3, (val as i64) & 0x1F) // CHR $1xxx / FE
+                mmc2SetChr(&mut bus.ppu, 3, (val as i64) & 0x1F) // CHR $1xxx / FE
             } else {
                 bus.ppu.mirrorVertical = (val & 1) == 0 // $F000: 0=vert,1=horiz
             }
             return
         }
         if bus.mapper == 227 {
-            mapper227Write(bus, a)
+            mapper227Write(&mut bus, a)
             return
         }
         return
@@ -314,7 +314,7 @@ fn mmc3Write(bus: &mut Bus, a: i64, val: u8): void {
             if r == 7 {
                 bus.mmcR7 = v
             }
-            mmc3UpdateChr(bus)
+            mmc3UpdateChr(&mut bus)
         }
     } else if a < 0xC000 {
         if even {
@@ -358,8 +358,8 @@ pub fn newCpuNestest(): Cpu {
 
 // Power-on / reset: PC from the reset vector at $FFFC/$FFFD.
 pub fn newCpuReset(bus: &mut Bus): Cpu {
-    let lo = busRead(bus, 0xFFFC) as i64
-    let hi = busRead(bus, 0xFFFD) as i64
+    let lo = busRead(&mut bus, 0xFFFC) as i64
+    let hi = busRead(&mut bus, 0xFFFD) as i64
     return Cpu {
         a: 0, x: 0, y: 0, sp: 0xFD, p: 0x24, pc: wrap16(lo | (hi << 8)), cyc: 0, extraCycles: 0, unknownSeen: [false; 256]
     }
@@ -367,11 +367,11 @@ pub fn newCpuReset(bus: &mut Bus): Cpu {
 
 // Non-maskable interrupt (PPU vblank): push PC + P, jump to $FFFA vector.
 fn nmi(cpu: &mut Cpu, bus: &mut Bus): void {
-    push16(cpu, bus, cpu.pc)
-    push8(cpu, bus, (cpu.p & (~FB)) | FU)
-    setFlag(cpu, FI, true)
-    let lo = busRead(bus, 0xFFFA) as i64
-    let hi = busRead(bus, 0xFFFB) as i64
+    push16(&mut cpu, &mut bus, cpu.pc)
+    push8(&mut cpu, &mut bus, (cpu.p & (~FB)) | FU)
+    setFlag(&mut cpu, FI, true)
+    let lo = busRead(&mut bus, 0xFFFA) as i64
+    let hi = busRead(&mut bus, 0xFFFB) as i64
     cpu.pc = wrap16(lo | (hi << 8))
     cpu.cyc = cpu.cyc + 7
 }
@@ -379,11 +379,11 @@ fn nmi(cpu: &mut Cpu, bus: &mut Bus): void {
 // Maskable interrupt (MMC3 scanline IRQ): like nmi but gated on the I flag,
 // vectored through $FFFE. The caller checks I; this always takes the interrupt.
 fn irq(cpu: &mut Cpu, bus: &mut Bus): void {
-    push16(cpu, bus, cpu.pc)
-    push8(cpu, bus, (cpu.p & (~FB)) | FU)
-    setFlag(cpu, FI, true)
-    let lo = busRead(bus, 0xFFFE) as i64
-    let hi = busRead(bus, 0xFFFF) as i64
+    push16(&mut cpu, &mut bus, cpu.pc)
+    push8(&mut cpu, &mut bus, (cpu.p & (~FB)) | FU)
+    setFlag(&mut cpu, FI, true)
+    let lo = busRead(&mut bus, 0xFFFE) as i64
+    let hi = busRead(&mut bus, 0xFFFF) as i64
     cpu.pc = wrap16(lo | (hi << 8))
     cpu.cyc = cpu.cyc + 7
 }
@@ -399,7 +399,7 @@ fn irq(cpu: &mut Cpu, bus: &mut Bus): void {
 pub fn serviceInterrupts(cpu: &mut Cpu, bus: &mut Bus): void {
     if bus.nmiArmed {
         bus.nmiArmed = false
-        nmi(cpu, bus)
+        nmi(&mut cpu, &mut bus)
     } else if bus.ppu.nmiPending {
         bus.ppu.nmiPending = false
         bus.nmiArmed = true
@@ -410,7 +410,7 @@ pub fn serviceInterrupts(cpu: &mut Cpu, bus: &mut Bus): void {
     // MMC3 scanline splits).
     if (bus.irqPending || bus.apu.frameIrq || bus.apu.dmc.irqFlag) && !cpuFlag(cpu, 0x04) {
         bus.irqPending = false
-        irq(cpu, bus)
+        irq(&mut cpu, &mut bus)
     }
 }
 
@@ -519,18 +519,18 @@ fn mmc3ClockIrq(bus: &mut Bus): void {
 // Advance the APU by `cycles` CPU cycles, then service any DMC sample-fetch it
 // requested (the DMC reads CPU memory, which only the bus can do).
 pub fn clockApu(bus: &mut Bus, cycles: i64): void {
-    apuStep(bus.apu, cycles)
+    apuStep(&mut bus.apu, cycles)
     if bus.apu.dmc.needsFetch {
         let addr = bus.apu.dmc.curAddr
-        let b = busRead(bus, addr as u16)
-        dmcFill(bus.apu.dmc, b as i64)
+        let b = busRead(&mut bus, addr as u16)
+        dmcFill(&mut bus.apu.dmc, b as i64)
     }
 }
 
 pub fn clockPpu(bus: &mut Bus): void {
-    ppuStep(bus.ppu)
+    ppuStep(&mut bus.ppu)
     if bus.mapper == 4 && bus.ppu.dot == 260 && bus.ppu.scanline < 240 && (bus.ppu.mask & 0x18) != 0 {
-        mmc3ClockIrq(bus)
+        mmc3ClockIrq(&mut bus)
     }
 }
 
@@ -548,8 +548,8 @@ fn setFlag(cpu: &mut Cpu, mask: u8, on: bool): void {
 }
 
 fn setZN(cpu: &mut Cpu, v: u8): void {
-    setFlag(cpu, FZ, v == 0)
-    setFlag(cpu, FN, (v & 0x80) != 0)
+    setFlag(&mut cpu, FZ, v == 0)
+    setFlag(&mut cpu, FN, (v & 0x80) != 0)
 }
 
 // --- 16-bit / pc helpers (explicit masking NES arithmetic wraps) ---
@@ -560,51 +560,51 @@ ensures(result as i64) == (v & 0xFFFF)
 }
 
 fn read16(bus: &mut Bus, addr: u16): u16 {
-    let lo: i64 = busRead(bus, addr) as i64
-    let hi: i64 = busRead(bus, wrap16((addr as i64) + 1)) as i64
+    let lo: i64 = busRead(&mut bus, addr) as i64
+    let hi: i64 = busRead(&mut bus, wrap16((addr as i64) + 1)) as i64
     return wrap16(lo | (hi << 8))
 }
 
 // 6502 indirect-JMP page-wrap bug: high byte reads from ($xxFF & $xx00), not +1 page.
 fn read16Bug(bus: &mut Bus, addr: u16): u16 {
     let a: i64 = addr as i64
-    let lo: i64 = busRead(bus, addr) as i64
+    let lo: i64 = busRead(&mut bus, addr) as i64
     let hiAddr: i64 = (a & 0xFF00) | ((a + 1) & 0x00FF)
-    let hi: i64 = busRead(bus, wrap16(hiAddr)) as i64
+    let hi: i64 = busRead(&mut bus, wrap16(hiAddr)) as i64
     return wrap16(lo | (hi << 8))
 }
 
 fn fetch8(cpu: &mut Cpu, bus: &mut Bus): u8 {
-    let v = busRead(bus, cpu.pc)
+    let v = busRead(&mut bus, cpu.pc)
     cpu.pc = wrap16((cpu.pc as i64) + 1)
     return v
 }
 
 fn fetch16(cpu: &mut Cpu, bus: &mut Bus): u16 {
-    let v = read16(bus, cpu.pc)
+    let v = read16(&mut bus, cpu.pc)
     cpu.pc = wrap16((cpu.pc as i64) + 2)
     return v
 }
 
 // --- stack ($0100-$01FF) ---
 fn push8(cpu: &mut Cpu, bus: &mut Bus, v: u8): void {
-    busWrite(bus, wrap16(0x0100 | (cpu.sp as i64)), v)
+    busWrite(&mut bus, wrap16(0x0100 | (cpu.sp as i64)), v)
     cpu.sp = cpu.sp.wrappingSub(1)
 }
 
 fn pop8(cpu: &mut Cpu, bus: &mut Bus): u8 {
     cpu.sp = cpu.sp.wrappingAdd(1)
-    return busRead(bus, wrap16(0x0100 | (cpu.sp as i64)))
+    return busRead(&mut bus, wrap16(0x0100 | (cpu.sp as i64)))
 }
 
 fn push16(cpu: &mut Cpu, bus: &mut Bus, v: u16): void {
-    push8(cpu, bus, (v >> 8) as u8) // high byte — genuine u16→u8 narrowing
-    push8(cpu, bus, v as u8)
+    push8(&mut cpu, &mut bus, (v >> 8) as u8) // high byte — genuine u16→u8 narrowing
+    push8(&mut cpu, &mut bus, v as u8)
 }
 
 fn pop16(cpu: &mut Cpu, bus: &mut Bus): u16 {
-    let lo: i64 = pop8(cpu, bus) as i64
-    let hi: i64 = pop8(cpu, bus) as i64
+    let lo: i64 = pop8(&mut cpu, &mut bus) as i64
+    let hi: i64 = pop8(&mut cpu, &mut bus) as i64
     return wrap16(lo | (hi << 8))
 }
 
@@ -619,8 +619,8 @@ fn pageCrossed(base: u16, eff: u16): bool {
 fn read16ZP(bus: &mut Bus, z: i64): u16
 requires 0 <= z && z <= 255 // zero-page pointer index; callers must pre-mask
 {
-    let lo: i64 = busRead(bus, (z & 0xFF) as u16) as i64
-    let hi: i64 = busRead(bus, ((z + 1) & 0xFF) as u16) as i64
+    let lo: i64 = busRead(&mut bus, (z & 0xFF) as u16) as i64
+    let hi: i64 = busRead(&mut bus, ((z + 1) & 0xFF) as u16) as i64
     return wrap16(lo | (hi << 8))
 }
 
@@ -631,23 +631,23 @@ fn aImm(cpu: &mut Cpu): u16 {
 }
 
 fn aZp(cpu: &mut Cpu, bus: &mut Bus): u16 {
-    return fetch8(cpu, bus) as u16
+    return fetch8(&mut cpu, &mut bus) as u16
 }
 
 fn aZpX(cpu: &mut Cpu, bus: &mut Bus): u16 {
-    return (((fetch8(cpu, bus) as i64) + (cpu.x as i64)) & 0xFF) as u16
+    return (((fetch8(&mut cpu, &mut bus) as i64) + (cpu.x as i64)) & 0xFF) as u16
 }
 
 fn aZpY(cpu: &mut Cpu, bus: &mut Bus): u16 {
-    return (((fetch8(cpu, bus) as i64) + (cpu.y as i64)) & 0xFF) as u16
+    return (((fetch8(&mut cpu, &mut bus) as i64) + (cpu.y as i64)) & 0xFF) as u16
 }
 
 fn aAbs(cpu: &mut Cpu, bus: &mut Bus): u16 {
-    return fetch16(cpu, bus)
+    return fetch16(&mut cpu, &mut bus)
 }
 
 fn aAbsX(cpu: &mut Cpu, bus: &mut Bus): u16 {
-    let base = fetch16(cpu, bus)
+    let base = fetch16(&mut cpu, &mut bus)
     let eff = wrap16((base as i64) + (cpu.x as i64))
     if pageCrossed(base, eff) {
         cpu.extraCycles = 1
@@ -656,7 +656,7 @@ fn aAbsX(cpu: &mut Cpu, bus: &mut Bus): u16 {
 }
 
 fn aAbsY(cpu: &mut Cpu, bus: &mut Bus): u16 {
-    let base = fetch16(cpu, bus)
+    let base = fetch16(&mut cpu, &mut bus)
     let eff = wrap16((base as i64) + (cpu.y as i64))
     if pageCrossed(base, eff) {
         cpu.extraCycles = 1
@@ -665,13 +665,13 @@ fn aAbsY(cpu: &mut Cpu, bus: &mut Bus): u16 {
 }
 
 fn aIndX(cpu: &mut Cpu, bus: &mut Bus): u16 {
-    let z = ((fetch8(cpu, bus) as i64) + (cpu.x as i64)) & 0xFF
-    return read16ZP(bus, z)
+    let z = ((fetch8(&mut cpu, &mut bus) as i64) + (cpu.x as i64)) & 0xFF
+    return read16ZP(&mut bus, z)
 }
 
 fn aIndY(cpu: &mut Cpu, bus: &mut Bus): u16 {
-    let z = fetch8(cpu, bus) as i64
-    let base = read16ZP(bus, z)
+    let z = fetch8(&mut cpu, &mut bus) as i64
+    let base = read16ZP(&mut bus, z)
     let eff = wrap16((base as i64) + (cpu.y as i64))
     if pageCrossed(base, eff) {
         cpu.extraCycles = 1
@@ -689,40 +689,40 @@ fn adc(cpu: &mut Cpu, m: u8): void {
     }
     let sum: i64 = a + (m as i64) + carry
     let r: u8 = (sum & 0xFF) as u8
-    setFlag(cpu, FC, sum > 0xFF)
+    setFlag(&mut cpu, FC, sum > 0xFF)
     // overflow: operands share sign, result differs
-    setFlag(cpu, FV, ((~(a ^ (m as i64))) & (a ^ (r as i64)) & 0x80) != 0)
+    setFlag(&mut cpu, FV, ((~(a ^ (m as i64))) & (a ^ (r as i64)) & 0x80) != 0)
     cpu.a = r
-    setZN(cpu, r)
+    setZN(&mut cpu, r)
 }
 
 fn sbc(cpu: &mut Cpu, m: u8): void {
-    adc(cpu, (m as i64 ^ 0xFF) as u8)
+    adc(&mut cpu, (m as i64 ^ 0xFF) as u8)
 }
 
 fn compare(cpu: &mut Cpu, reg: u8, m: u8): void {
-    setFlag(cpu, FC, reg >= m)
-    setZN(cpu, reg.wrappingSub(m)) // only the low byte feeds Z/N
+    setFlag(&mut cpu, FC, reg >= m)
+    setZN(&mut cpu, reg.wrappingSub(m)) // only the low byte feeds Z/N
 }
 
 fn bitTest(cpu: &mut Cpu, m: u8): void {
-    setFlag(cpu, FZ, ((cpu.a as i64) & (m as i64)) == 0)
-    setFlag(cpu, FN, (m & 0x80) != 0)
-    setFlag(cpu, FV, (m & 0x40) != 0)
+    setFlag(&mut cpu, FZ, ((cpu.a as i64) & (m as i64)) == 0)
+    setFlag(&mut cpu, FN, (m & 0x80) != 0)
+    setFlag(&mut cpu, FV, (m & 0x40) != 0)
 }
 
 // shifts/rotates return the result and set C from the shifted-out bit.
 fn aslV(cpu: &mut Cpu, m: u8): u8 {
-    setFlag(cpu, FC, (m & 0x80) != 0)
+    setFlag(&mut cpu, FC, (m & 0x80) != 0)
     let r: u8 = m << 1 // u8 shift truncates the carried-out bit
-    setZN(cpu, r)
+    setZN(&mut cpu, r)
     return r
 }
 
 fn lsrV(cpu: &mut Cpu, m: u8): u8 {
-    setFlag(cpu, FC, (m & 0x01) != 0)
+    setFlag(&mut cpu, FC, (m & 0x01) != 0)
     let r: u8 = m >> 1
-    setZN(cpu, r)
+    setZN(&mut cpu, r)
     return r
 }
 
@@ -732,9 +732,9 @@ fn rolV(cpu: &mut Cpu, m: u8): u8 {
     } else {
         0
     }
-    setFlag(cpu, FC, (m & 0x80) != 0)
+    setFlag(&mut cpu, FC, (m & 0x80) != 0)
     let r: u8 = (m << 1) | cin
-    setZN(cpu, r)
+    setZN(&mut cpu, r)
     return r
 }
 
@@ -744,15 +744,15 @@ fn rorV(cpu: &mut Cpu, m: u8): u8 {
     } else {
         0
     }
-    setFlag(cpu, FC, (m & 0x01) != 0)
+    setFlag(&mut cpu, FC, (m & 0x01) != 0)
     let r: u8 = (m >> 1) | cin
-    setZN(cpu, r)
+    setZN(&mut cpu, r)
     return r
 }
 
 // Conditional branch with taken/page-cross cycle penalties base 2 added by caller.
 fn branch(cpu: &mut Cpu, bus: &mut Bus, cond: bool): void {
-    var off: i64 = fetch8(cpu, bus) as i64
+    var off: i64 = fetch8(&mut cpu, &mut bus) as i64
     if off >= 128 {
         off = off - 256
     }
@@ -785,7 +785,7 @@ fn hex2(v: i64): string {
 pub fn hex4(v: i64): string {
     var s = hex2((v >> 8) & 0xFF)
     let lo = hex2(v & 0xFF)
-    appendStr(s, lo)
+    appendStr(&mut s, lo)
     return s
 }
 
@@ -812,87 +812,87 @@ fn decStr(n: i64): string {
 pub fn formatState(cpu: &Cpu): string {
     var s = hex4(cpu.pc as i64)
     let a = hex2(cpu.a as i64)
-    appendStr(s, " A:")
-    appendStr(s, a)
+    appendStr(&mut s, " A:")
+    appendStr(&mut s, a)
     let x = hex2(cpu.x as i64)
-    appendStr(s, " X:")
-    appendStr(s, x)
+    appendStr(&mut s, " X:")
+    appendStr(&mut s, x)
     let y = hex2(cpu.y as i64)
-    appendStr(s, " Y:")
-    appendStr(s, y)
+    appendStr(&mut s, " Y:")
+    appendStr(&mut s, y)
     let p = hex2(cpu.p as i64)
-    appendStr(s, " P:")
-    appendStr(s, p)
+    appendStr(&mut s, " P:")
+    appendStr(&mut s, p)
     let sp = hex2(cpu.sp as i64)
-    appendStr(s, " SP:")
-    appendStr(s, sp)
+    appendStr(&mut s, " SP:")
+    appendStr(&mut s, sp)
     let c = decStr(cpu.cyc)
-    appendStr(s, " CYC:")
-    appendStr(s, c)
+    appendStr(&mut s, " CYC:")
+    appendStr(&mut s, c)
     return s
 }
 
 // --- unofficial ("illegal") opcode helpers, addr pre-resolved by caller ---
 fn lax(cpu: &mut Cpu, bus: &mut Bus, addr: u16): void {
-    let v = busRead(bus, addr)
+    let v = busRead(&mut bus, addr)
     cpu.a = v
     cpu.x = v
-    setZN(cpu, v)
+    setZN(&mut cpu, v)
 }
 
 fn sax(cpu: &mut Cpu, bus: &mut Bus, addr: u16): void {
-    busWrite(bus, addr, cpu.a & cpu.x)
+    busWrite(&mut bus, addr, cpu.a & cpu.x)
 }
 
 fn dcp(cpu: &mut Cpu, bus: &mut Bus, addr: u16): void {
-    let m = busRead(bus, addr).wrappingSub(1)
-    busWrite(bus, addr, m)
-    compare(cpu, cpu.a, m)
+    let m = busRead(&mut bus, addr).wrappingSub(1)
+    busWrite(&mut bus, addr, m)
+    compare(&mut cpu, cpu.a, m)
 }
 
 fn isb(cpu: &mut Cpu, bus: &mut Bus, addr: u16): void {
-    let m = busRead(bus, addr).wrappingAdd(1)
-    busWrite(bus, addr, m)
-    sbc(cpu, m)
+    let m = busRead(&mut bus, addr).wrappingAdd(1)
+    busWrite(&mut bus, addr, m)
+    sbc(&mut cpu, m)
 }
 
 fn slo(cpu: &mut Cpu, bus: &mut Bus, addr: u16): void {
-    let m = aslV(cpu, busRead(bus, addr))
-    busWrite(bus, addr, m)
+    let m = aslV(&mut cpu, busRead(&mut bus, addr))
+    busWrite(&mut bus, addr, m)
     cpu.a = cpu.a | m
-    setZN(cpu, cpu.a)
+    setZN(&mut cpu, cpu.a)
 }
 
 fn rla(cpu: &mut Cpu, bus: &mut Bus, addr: u16): void {
-    let m = rolV(cpu, busRead(bus, addr))
-    busWrite(bus, addr, m)
+    let m = rolV(&mut cpu, busRead(&mut bus, addr))
+    busWrite(&mut bus, addr, m)
     cpu.a = cpu.a & m
-    setZN(cpu, cpu.a)
+    setZN(&mut cpu, cpu.a)
 }
 
 fn sre(cpu: &mut Cpu, bus: &mut Bus, addr: u16): void {
-    let m = lsrV(cpu, busRead(bus, addr))
-    busWrite(bus, addr, m)
+    let m = lsrV(&mut cpu, busRead(&mut bus, addr))
+    busWrite(&mut bus, addr, m)
     cpu.a = cpu.a ^ m
-    setZN(cpu, cpu.a)
+    setZN(&mut cpu, cpu.a)
 }
 
 fn rra(cpu: &mut Cpu, bus: &mut Bus, addr: u16): void {
-    let m = rorV(cpu, busRead(bus, addr))
-    busWrite(bus, addr, m)
-    adc(cpu, m)
+    let m = rorV(&mut cpu, busRead(&mut bus, addr))
+    busWrite(&mut bus, addr, m)
+    adc(&mut cpu, m)
 }
 
 // ANC: A &= imm; carry is copied from the result's bit 7 (as ASL/ROL would).
 fn anc(cpu: &mut Cpu, m: u8): void {
     cpu.a = cpu.a & m
-    setZN(cpu, cpu.a)
-    setFlag(cpu, FC, (cpu.a & 0x80) != 0)
+    setZN(&mut cpu, cpu.a)
+    setFlag(&mut cpu, FC, (cpu.a & 0x80) != 0)
 }
 
 // ALR (ASR): A &= imm, then LSR A.
 fn alr(cpu: &mut Cpu, m: u8): void {
-    cpu.a = lsrV(cpu, cpu.a & m)
+    cpu.a = lsrV(&mut cpu, cpu.a & m)
 }
 
 // ARR: A &= imm, then ROR A — but C/V come from the result, not the shifted bit.
@@ -904,26 +904,26 @@ fn arr(cpu: &mut Cpu, m: u8): void {
     }
     let r: u8 = ((cpu.a & m) >> 1) | cin
     cpu.a = r
-    setZN(cpu, r) // N = old carry (now bit 7), Z from r
-    setFlag(cpu, FC, (r & 0x40) != 0)
-    setFlag(cpu, FV, ((((r as i64) >> 6) ^ ((r as i64) >> 5)) & 1) != 0)
+    setZN(&mut cpu, r) // N = old carry (now bit 7), Z from r
+    setFlag(&mut cpu, FC, (r & 0x40) != 0)
+    setFlag(&mut cpu, FV, ((((r as i64) >> 6) ^ ((r as i64) >> 5)) & 1) != 0)
 }
 
 // SBX (AXS): X = (A & X) - imm; carry set like CMP, no borrow-in.
 fn sbx(cpu: &mut Cpu, m: u8): void {
     let ax: i64 = (cpu.a as i64) & (cpu.x as i64)
-    setFlag(cpu, FC, ax >= (m as i64))
+    setFlag(&mut cpu, FC, ax >= (m as i64))
     cpu.x = ((ax - (m as i64)) & 0xFF) as u8
-    setZN(cpu, cpu.x)
+    setZN(&mut cpu, cpu.x)
 }
 
 // LAS: A = X = SP = (mem & SP).
 fn las(cpu: &mut Cpu, bus: &mut Bus, addr: u16): void {
-    let t = busRead(bus, addr) & cpu.sp
+    let t = busRead(&mut bus, addr) & cpu.sp
     cpu.a = t
     cpu.x = t
     cpu.sp = t
-    setZN(cpu, t)
+    setZN(&mut cpu, t)
 }
 
 // LXA: A = X = imm. (The chip's "magic constant" varies; 0xFF is the stable
@@ -931,13 +931,13 @@ fn las(cpu: &mut Cpu, bus: &mut Bus, addr: u16): void {
 fn lxa(cpu: &mut Cpu, m: u8): void {
     cpu.a = m
     cpu.x = m
-    setZN(cpu, m)
+    setZN(&mut cpu, m)
 }
 
 // ANE (XAA): A = (A | magic) & X & imm. Unstable; 0xEE is the common magic.
 fn ane(cpu: &mut Cpu, m: u8): void {
     cpu.a = (cpu.a | 0xEE) & cpu.x & m
-    setZN(cpu, cpu.a)
+    setZN(&mut cpu, cpu.a)
 }
 
 // SHA/SHX/SHY/TAS: store reg AND'd with (high byte of target + 1) — the address
@@ -948,20 +948,20 @@ fn hiPlus1(addr: u16): i64 {
 }
 
 fn sha(cpu: &mut Cpu, bus: &mut Bus, addr: u16): void {
-    busWrite(bus, addr, (((cpu.a as i64) & (cpu.x as i64) & hiPlus1(addr)) & 0xFF) as u8)
+    busWrite(&mut bus, addr, (((cpu.a as i64) & (cpu.x as i64) & hiPlus1(addr)) & 0xFF) as u8)
 }
 
 fn shx(cpu: &mut Cpu, bus: &mut Bus, addr: u16): void {
-    busWrite(bus, addr, (((cpu.x as i64) & hiPlus1(addr)) & 0xFF) as u8)
+    busWrite(&mut bus, addr, (((cpu.x as i64) & hiPlus1(addr)) & 0xFF) as u8)
 }
 
 fn shy(cpu: &mut Cpu, bus: &mut Bus, addr: u16): void {
-    busWrite(bus, addr, (((cpu.y as i64) & hiPlus1(addr)) & 0xFF) as u8)
+    busWrite(&mut bus, addr, (((cpu.y as i64) & hiPlus1(addr)) & 0xFF) as u8)
 }
 
 fn tas(cpu: &mut Cpu, bus: &mut Bus, addr: u16): void {
     cpu.sp = cpu.a & cpu.x
-    busWrite(bus, addr, (((cpu.sp as i64) & hiPlus1(addr)) & 0xFF) as u8)
+    busWrite(&mut bus, addr, (((cpu.sp as i64) & hiPlus1(addr)) & 0xFF) as u8)
 }
 
 // JAM/KIL: hardware halts until reset. Rewind PC onto the opcode so it re-executes
@@ -975,208 +975,208 @@ fn jam(cpu: &mut Cpu): void {
 // Execute one instruction, advancing cyc by its total cost.
 pub fn step(cpu: &mut Cpu, bus: &mut Bus): void {
     cpu.extraCycles = 0
-    let op = fetch8(cpu, bus)
+    let op = fetch8(&mut cpu, &mut bus)
     match op {
         // ---- BRK ---- software interrupt; 2-byte (opcode + ignored padding).
         // fetch8 left PC at the padding byte, so push PC+1 to skip it on RTI.
         0x00 => {
-            push16(cpu, bus, wrap16(cpu.pc as i64 + 1))
-            push8(cpu, bus, cpu.p | FB | FU)
-            setFlag(cpu, FI, true)
-            let lo = busRead(bus, 0xFFFE) as i64
-            let hi = busRead(bus, 0xFFFF) as i64
+            push16(&mut cpu, &mut bus, wrap16(cpu.pc as i64 + 1))
+            push8(&mut cpu, &mut bus, cpu.p | FB | FU)
+            setFlag(&mut cpu, FI, true)
+            let lo = busRead(&mut bus, 0xFFFE) as i64
+            let hi = busRead(&mut bus, 0xFFFF) as i64
             cpu.pc = wrap16(lo | (hi << 8))
             cpu.cyc = cpu.cyc + 7
         }
         // ---- LDA ----
         0xA9 => {
-            let v = busRead(bus, aImm(cpu))
+            let v = busRead(&mut bus, aImm(&mut cpu))
             cpu.a = v
-            setZN(cpu, v)
+            setZN(&mut cpu, v)
             cpu.cyc = cpu.cyc + 2
         }
         0xA5 => {
-            let v = busRead(bus, aZp(cpu, bus))
+            let v = busRead(&mut bus, aZp(&mut cpu, &mut bus))
             cpu.a = v
-            setZN(cpu, v)
+            setZN(&mut cpu, v)
             cpu.cyc = cpu.cyc + 3
         }
         0xB5 => {
-            let v = busRead(bus, aZpX(cpu, bus))
+            let v = busRead(&mut bus, aZpX(&mut cpu, &mut bus))
             cpu.a = v
-            setZN(cpu, v)
+            setZN(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4
         }
         0xAD => {
-            let v = busRead(bus, aAbs(cpu, bus))
+            let v = busRead(&mut bus, aAbs(&mut cpu, &mut bus))
             cpu.a = v
-            setZN(cpu, v)
+            setZN(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4
         }
         0xBD => {
-            let v = busRead(bus, aAbsX(cpu, bus))
+            let v = busRead(&mut bus, aAbsX(&mut cpu, &mut bus))
             cpu.a = v
-            setZN(cpu, v)
+            setZN(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0xB9 => {
-            let v = busRead(bus, aAbsY(cpu, bus))
+            let v = busRead(&mut bus, aAbsY(&mut cpu, &mut bus))
             cpu.a = v
-            setZN(cpu, v)
+            setZN(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0xA1 => {
-            let v = busRead(bus, aIndX(cpu, bus))
+            let v = busRead(&mut bus, aIndX(&mut cpu, &mut bus))
             cpu.a = v
-            setZN(cpu, v)
+            setZN(&mut cpu, v)
             cpu.cyc = cpu.cyc + 6
         }
         0xB1 => {
-            let v = busRead(bus, aIndY(cpu, bus))
+            let v = busRead(&mut bus, aIndY(&mut cpu, &mut bus))
             cpu.a = v
-            setZN(cpu, v)
+            setZN(&mut cpu, v)
             cpu.cyc = cpu.cyc + 5 + cpu.extraCycles
         }
         // ---- LDX ----
         0xA2 => {
-            let v = busRead(bus, aImm(cpu))
+            let v = busRead(&mut bus, aImm(&mut cpu))
             cpu.x = v
-            setZN(cpu, v)
+            setZN(&mut cpu, v)
             cpu.cyc = cpu.cyc + 2
         }
         0xA6 => {
-            let v = busRead(bus, aZp(cpu, bus))
+            let v = busRead(&mut bus, aZp(&mut cpu, &mut bus))
             cpu.x = v
-            setZN(cpu, v)
+            setZN(&mut cpu, v)
             cpu.cyc = cpu.cyc + 3
         }
         0xB6 => {
-            let v = busRead(bus, aZpY(cpu, bus))
+            let v = busRead(&mut bus, aZpY(&mut cpu, &mut bus))
             cpu.x = v
-            setZN(cpu, v)
+            setZN(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4
         }
         0xAE => {
-            let v = busRead(bus, aAbs(cpu, bus))
+            let v = busRead(&mut bus, aAbs(&mut cpu, &mut bus))
             cpu.x = v
-            setZN(cpu, v)
+            setZN(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4
         }
         0xBE => {
-            let v = busRead(bus, aAbsY(cpu, bus))
+            let v = busRead(&mut bus, aAbsY(&mut cpu, &mut bus))
             cpu.x = v
-            setZN(cpu, v)
+            setZN(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         // ---- LDY ----
         0xA0 => {
-            let v = busRead(bus, aImm(cpu))
+            let v = busRead(&mut bus, aImm(&mut cpu))
             cpu.y = v
-            setZN(cpu, v)
+            setZN(&mut cpu, v)
             cpu.cyc = cpu.cyc + 2
         }
         0xA4 => {
-            let v = busRead(bus, aZp(cpu, bus))
+            let v = busRead(&mut bus, aZp(&mut cpu, &mut bus))
             cpu.y = v
-            setZN(cpu, v)
+            setZN(&mut cpu, v)
             cpu.cyc = cpu.cyc + 3
         }
         0xB4 => {
-            let v = busRead(bus, aZpX(cpu, bus))
+            let v = busRead(&mut bus, aZpX(&mut cpu, &mut bus))
             cpu.y = v
-            setZN(cpu, v)
+            setZN(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4
         }
         0xAC => {
-            let v = busRead(bus, aAbs(cpu, bus))
+            let v = busRead(&mut bus, aAbs(&mut cpu, &mut bus))
             cpu.y = v
-            setZN(cpu, v)
+            setZN(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4
         }
         0xBC => {
-            let v = busRead(bus, aAbsX(cpu, bus))
+            let v = busRead(&mut bus, aAbsX(&mut cpu, &mut bus))
             cpu.y = v
-            setZN(cpu, v)
+            setZN(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         // ---- STA ----
         0x85 => {
-            busWrite(bus, aZp(cpu, bus), cpu.a)
+            busWrite(&mut bus, aZp(&mut cpu, &mut bus), cpu.a)
             cpu.cyc = cpu.cyc + 3
         }
         0x95 => {
-            busWrite(bus, aZpX(cpu, bus), cpu.a)
+            busWrite(&mut bus, aZpX(&mut cpu, &mut bus), cpu.a)
             cpu.cyc = cpu.cyc + 4
         }
         0x8D => {
-            busWrite(bus, aAbs(cpu, bus), cpu.a)
+            busWrite(&mut bus, aAbs(&mut cpu, &mut bus), cpu.a)
             cpu.cyc = cpu.cyc + 4
         }
         0x9D => {
-            busWrite(bus, aAbsX(cpu, bus), cpu.a)
+            busWrite(&mut bus, aAbsX(&mut cpu, &mut bus), cpu.a)
             cpu.cyc = cpu.cyc + 5
         }
         0x99 => {
-            busWrite(bus, aAbsY(cpu, bus), cpu.a)
+            busWrite(&mut bus, aAbsY(&mut cpu, &mut bus), cpu.a)
             cpu.cyc = cpu.cyc + 5
         }
         0x81 => {
-            busWrite(bus, aIndX(cpu, bus), cpu.a)
+            busWrite(&mut bus, aIndX(&mut cpu, &mut bus), cpu.a)
             cpu.cyc = cpu.cyc + 6
         }
         0x91 => {
-            busWrite(bus, aIndY(cpu, bus), cpu.a)
+            busWrite(&mut bus, aIndY(&mut cpu, &mut bus), cpu.a)
             cpu.cyc = cpu.cyc + 6
         }
         // ---- STX / STY ----
         0x86 => {
-            busWrite(bus, aZp(cpu, bus), cpu.x)
+            busWrite(&mut bus, aZp(&mut cpu, &mut bus), cpu.x)
             cpu.cyc = cpu.cyc + 3
         }
         0x96 => {
-            busWrite(bus, aZpY(cpu, bus), cpu.x)
+            busWrite(&mut bus, aZpY(&mut cpu, &mut bus), cpu.x)
             cpu.cyc = cpu.cyc + 4
         }
         0x8E => {
-            busWrite(bus, aAbs(cpu, bus), cpu.x)
+            busWrite(&mut bus, aAbs(&mut cpu, &mut bus), cpu.x)
             cpu.cyc = cpu.cyc + 4
         }
         0x84 => {
-            busWrite(bus, aZp(cpu, bus), cpu.y)
+            busWrite(&mut bus, aZp(&mut cpu, &mut bus), cpu.y)
             cpu.cyc = cpu.cyc + 3
         }
         0x94 => {
-            busWrite(bus, aZpX(cpu, bus), cpu.y)
+            busWrite(&mut bus, aZpX(&mut cpu, &mut bus), cpu.y)
             cpu.cyc = cpu.cyc + 4
         }
         0x8C => {
-            busWrite(bus, aAbs(cpu, bus), cpu.y)
+            busWrite(&mut bus, aAbs(&mut cpu, &mut bus), cpu.y)
             cpu.cyc = cpu.cyc + 4
         }
         // ---- transfers ----
         0xAA => {
             cpu.x = cpu.a
-            setZN(cpu, cpu.x)
+            setZN(&mut cpu, cpu.x)
             cpu.cyc = cpu.cyc + 2
         }
         0xA8 => {
             cpu.y = cpu.a
-            setZN(cpu, cpu.y)
+            setZN(&mut cpu, cpu.y)
             cpu.cyc = cpu.cyc + 2
         }
         0x8A => {
             cpu.a = cpu.x
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 2
         }
         0x98 => {
             cpu.a = cpu.y
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 2
         }
         0xBA => {
             cpu.x = cpu.sp
-            setZN(cpu, cpu.x)
+            setZN(&mut cpu, cpu.x)
             cpu.cyc = cpu.cyc + 2
         }
         0x9A => {
@@ -1185,611 +1185,611 @@ pub fn step(cpu: &mut Cpu, bus: &mut Bus): void {
         }
         // ---- stack ----
         0x48 => {
-            push8(cpu, bus, cpu.a)
+            push8(&mut cpu, &mut bus, cpu.a)
             cpu.cyc = cpu.cyc + 3
         }
         0x68 => {
-            let v = pop8(cpu, bus)
+            let v = pop8(&mut cpu, &mut bus)
             cpu.a = v
-            setZN(cpu, v)
+            setZN(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4
         }
         0x08 => {
-            push8(cpu, bus, cpu.p | FB | FU)
+            push8(&mut cpu, &mut bus, cpu.p | FB | FU)
             cpu.cyc = cpu.cyc + 3
         }
         0x28 => {
-            let v = pop8(cpu, bus)
+            let v = pop8(&mut cpu, &mut bus)
             cpu.p = (v & (~FB)) | FU
             cpu.cyc = cpu.cyc + 4
         }
         // ---- logic ----
         0x29 => {
-            let v = busRead(bus, aImm(cpu))
+            let v = busRead(&mut bus, aImm(&mut cpu))
             cpu.a = cpu.a & v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 2
         }
         0x25 => {
-            let v = busRead(bus, aZp(cpu, bus))
+            let v = busRead(&mut bus, aZp(&mut cpu, &mut bus))
             cpu.a = cpu.a & v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 3
         }
         0x35 => {
-            let v = busRead(bus, aZpX(cpu, bus))
+            let v = busRead(&mut bus, aZpX(&mut cpu, &mut bus))
             cpu.a = cpu.a & v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 4
         }
         0x2D => {
-            let v = busRead(bus, aAbs(cpu, bus))
+            let v = busRead(&mut bus, aAbs(&mut cpu, &mut bus))
             cpu.a = cpu.a & v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 4
         }
         0x3D => {
-            let v = busRead(bus, aAbsX(cpu, bus))
+            let v = busRead(&mut bus, aAbsX(&mut cpu, &mut bus))
             cpu.a = cpu.a & v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0x39 => {
-            let v = busRead(bus, aAbsY(cpu, bus))
+            let v = busRead(&mut bus, aAbsY(&mut cpu, &mut bus))
             cpu.a = cpu.a & v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0x21 => {
-            let v = busRead(bus, aIndX(cpu, bus))
+            let v = busRead(&mut bus, aIndX(&mut cpu, &mut bus))
             cpu.a = cpu.a & v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 6
         }
         0x31 => {
-            let v = busRead(bus, aIndY(cpu, bus))
+            let v = busRead(&mut bus, aIndY(&mut cpu, &mut bus))
             cpu.a = cpu.a & v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 5 + cpu.extraCycles
         }
         0x09 => {
-            let v = busRead(bus, aImm(cpu))
+            let v = busRead(&mut bus, aImm(&mut cpu))
             cpu.a = cpu.a | v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 2
         }
         0x05 => {
-            let v = busRead(bus, aZp(cpu, bus))
+            let v = busRead(&mut bus, aZp(&mut cpu, &mut bus))
             cpu.a = cpu.a | v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 3
         }
         0x15 => {
-            let v = busRead(bus, aZpX(cpu, bus))
+            let v = busRead(&mut bus, aZpX(&mut cpu, &mut bus))
             cpu.a = cpu.a | v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 4
         }
         0x0D => {
-            let v = busRead(bus, aAbs(cpu, bus))
+            let v = busRead(&mut bus, aAbs(&mut cpu, &mut bus))
             cpu.a = cpu.a | v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 4
         }
         0x1D => {
-            let v = busRead(bus, aAbsX(cpu, bus))
+            let v = busRead(&mut bus, aAbsX(&mut cpu, &mut bus))
             cpu.a = cpu.a | v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0x19 => {
-            let v = busRead(bus, aAbsY(cpu, bus))
+            let v = busRead(&mut bus, aAbsY(&mut cpu, &mut bus))
             cpu.a = cpu.a | v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0x01 => {
-            let v = busRead(bus, aIndX(cpu, bus))
+            let v = busRead(&mut bus, aIndX(&mut cpu, &mut bus))
             cpu.a = cpu.a | v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 6
         }
         0x11 => {
-            let v = busRead(bus, aIndY(cpu, bus))
+            let v = busRead(&mut bus, aIndY(&mut cpu, &mut bus))
             cpu.a = cpu.a | v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 5 + cpu.extraCycles
         }
         0x49 => {
-            let v = busRead(bus, aImm(cpu))
+            let v = busRead(&mut bus, aImm(&mut cpu))
             cpu.a = cpu.a ^ v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 2
         }
         0x45 => {
-            let v = busRead(bus, aZp(cpu, bus))
+            let v = busRead(&mut bus, aZp(&mut cpu, &mut bus))
             cpu.a = cpu.a ^ v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 3
         }
         0x55 => {
-            let v = busRead(bus, aZpX(cpu, bus))
+            let v = busRead(&mut bus, aZpX(&mut cpu, &mut bus))
             cpu.a = cpu.a ^ v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 4
         }
         0x4D => {
-            let v = busRead(bus, aAbs(cpu, bus))
+            let v = busRead(&mut bus, aAbs(&mut cpu, &mut bus))
             cpu.a = cpu.a ^ v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 4
         }
         0x5D => {
-            let v = busRead(bus, aAbsX(cpu, bus))
+            let v = busRead(&mut bus, aAbsX(&mut cpu, &mut bus))
             cpu.a = cpu.a ^ v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0x59 => {
-            let v = busRead(bus, aAbsY(cpu, bus))
+            let v = busRead(&mut bus, aAbsY(&mut cpu, &mut bus))
             cpu.a = cpu.a ^ v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0x41 => {
-            let v = busRead(bus, aIndX(cpu, bus))
+            let v = busRead(&mut bus, aIndX(&mut cpu, &mut bus))
             cpu.a = cpu.a ^ v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 6
         }
         0x51 => {
-            let v = busRead(bus, aIndY(cpu, bus))
+            let v = busRead(&mut bus, aIndY(&mut cpu, &mut bus))
             cpu.a = cpu.a ^ v
-            setZN(cpu, cpu.a)
+            setZN(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 5 + cpu.extraCycles
         }
         // ---- ADC ----
         0x69 => {
-            let v = busRead(bus, aImm(cpu))
-            adc(cpu, v)
+            let v = busRead(&mut bus, aImm(&mut cpu))
+            adc(&mut cpu, v)
             cpu.cyc = cpu.cyc + 2
         }
         0x65 => {
-            let v = busRead(bus, aZp(cpu, bus))
-            adc(cpu, v)
+            let v = busRead(&mut bus, aZp(&mut cpu, &mut bus))
+            adc(&mut cpu, v)
             cpu.cyc = cpu.cyc + 3
         }
         0x75 => {
-            let v = busRead(bus, aZpX(cpu, bus))
-            adc(cpu, v)
+            let v = busRead(&mut bus, aZpX(&mut cpu, &mut bus))
+            adc(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4
         }
         0x6D => {
-            let v = busRead(bus, aAbs(cpu, bus))
-            adc(cpu, v)
+            let v = busRead(&mut bus, aAbs(&mut cpu, &mut bus))
+            adc(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4
         }
         0x7D => {
-            let v = busRead(bus, aAbsX(cpu, bus))
-            adc(cpu, v)
+            let v = busRead(&mut bus, aAbsX(&mut cpu, &mut bus))
+            adc(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0x79 => {
-            let v = busRead(bus, aAbsY(cpu, bus))
-            adc(cpu, v)
+            let v = busRead(&mut bus, aAbsY(&mut cpu, &mut bus))
+            adc(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0x61 => {
-            let v = busRead(bus, aIndX(cpu, bus))
-            adc(cpu, v)
+            let v = busRead(&mut bus, aIndX(&mut cpu, &mut bus))
+            adc(&mut cpu, v)
             cpu.cyc = cpu.cyc + 6
         }
         0x71 => {
-            let v = busRead(bus, aIndY(cpu, bus))
-            adc(cpu, v)
+            let v = busRead(&mut bus, aIndY(&mut cpu, &mut bus))
+            adc(&mut cpu, v)
             cpu.cyc = cpu.cyc + 5 + cpu.extraCycles
         }
         // ---- SBC ----
         0xE9 => {
-            let v = busRead(bus, aImm(cpu))
-            sbc(cpu, v)
+            let v = busRead(&mut bus, aImm(&mut cpu))
+            sbc(&mut cpu, v)
             cpu.cyc = cpu.cyc + 2
         }
         0xE5 => {
-            let v = busRead(bus, aZp(cpu, bus))
-            sbc(cpu, v)
+            let v = busRead(&mut bus, aZp(&mut cpu, &mut bus))
+            sbc(&mut cpu, v)
             cpu.cyc = cpu.cyc + 3
         }
         0xF5 => {
-            let v = busRead(bus, aZpX(cpu, bus))
-            sbc(cpu, v)
+            let v = busRead(&mut bus, aZpX(&mut cpu, &mut bus))
+            sbc(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4
         }
         0xED => {
-            let v = busRead(bus, aAbs(cpu, bus))
-            sbc(cpu, v)
+            let v = busRead(&mut bus, aAbs(&mut cpu, &mut bus))
+            sbc(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4
         }
         0xFD => {
-            let v = busRead(bus, aAbsX(cpu, bus))
-            sbc(cpu, v)
+            let v = busRead(&mut bus, aAbsX(&mut cpu, &mut bus))
+            sbc(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0xF9 => {
-            let v = busRead(bus, aAbsY(cpu, bus))
-            sbc(cpu, v)
+            let v = busRead(&mut bus, aAbsY(&mut cpu, &mut bus))
+            sbc(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0xE1 => {
-            let v = busRead(bus, aIndX(cpu, bus))
-            sbc(cpu, v)
+            let v = busRead(&mut bus, aIndX(&mut cpu, &mut bus))
+            sbc(&mut cpu, v)
             cpu.cyc = cpu.cyc + 6
         }
         0xF1 => {
-            let v = busRead(bus, aIndY(cpu, bus))
-            sbc(cpu, v)
+            let v = busRead(&mut bus, aIndY(&mut cpu, &mut bus))
+            sbc(&mut cpu, v)
             cpu.cyc = cpu.cyc + 5 + cpu.extraCycles
         }
         // ---- CMP / CPX / CPY ----
         0xC9 => {
-            let v = busRead(bus, aImm(cpu))
-            compare(cpu, cpu.a, v)
+            let v = busRead(&mut bus, aImm(&mut cpu))
+            compare(&mut cpu, cpu.a, v)
             cpu.cyc = cpu.cyc + 2
         }
         0xC5 => {
-            let v = busRead(bus, aZp(cpu, bus))
-            compare(cpu, cpu.a, v)
+            let v = busRead(&mut bus, aZp(&mut cpu, &mut bus))
+            compare(&mut cpu, cpu.a, v)
             cpu.cyc = cpu.cyc + 3
         }
         0xD5 => {
-            let v = busRead(bus, aZpX(cpu, bus))
-            compare(cpu, cpu.a, v)
+            let v = busRead(&mut bus, aZpX(&mut cpu, &mut bus))
+            compare(&mut cpu, cpu.a, v)
             cpu.cyc = cpu.cyc + 4
         }
         0xCD => {
-            let v = busRead(bus, aAbs(cpu, bus))
-            compare(cpu, cpu.a, v)
+            let v = busRead(&mut bus, aAbs(&mut cpu, &mut bus))
+            compare(&mut cpu, cpu.a, v)
             cpu.cyc = cpu.cyc + 4
         }
         0xDD => {
-            let v = busRead(bus, aAbsX(cpu, bus))
-            compare(cpu, cpu.a, v)
+            let v = busRead(&mut bus, aAbsX(&mut cpu, &mut bus))
+            compare(&mut cpu, cpu.a, v)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0xD9 => {
-            let v = busRead(bus, aAbsY(cpu, bus))
-            compare(cpu, cpu.a, v)
+            let v = busRead(&mut bus, aAbsY(&mut cpu, &mut bus))
+            compare(&mut cpu, cpu.a, v)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0xC1 => {
-            let v = busRead(bus, aIndX(cpu, bus))
-            compare(cpu, cpu.a, v)
+            let v = busRead(&mut bus, aIndX(&mut cpu, &mut bus))
+            compare(&mut cpu, cpu.a, v)
             cpu.cyc = cpu.cyc + 6
         }
         0xD1 => {
-            let v = busRead(bus, aIndY(cpu, bus))
-            compare(cpu, cpu.a, v)
+            let v = busRead(&mut bus, aIndY(&mut cpu, &mut bus))
+            compare(&mut cpu, cpu.a, v)
             cpu.cyc = cpu.cyc + 5 + cpu.extraCycles
         }
         0xE0 => {
-            let v = busRead(bus, aImm(cpu))
-            compare(cpu, cpu.x, v)
+            let v = busRead(&mut bus, aImm(&mut cpu))
+            compare(&mut cpu, cpu.x, v)
             cpu.cyc = cpu.cyc + 2
         }
         0xE4 => {
-            let v = busRead(bus, aZp(cpu, bus))
-            compare(cpu, cpu.x, v)
+            let v = busRead(&mut bus, aZp(&mut cpu, &mut bus))
+            compare(&mut cpu, cpu.x, v)
             cpu.cyc = cpu.cyc + 3
         }
         0xEC => {
-            let v = busRead(bus, aAbs(cpu, bus))
-            compare(cpu, cpu.x, v)
+            let v = busRead(&mut bus, aAbs(&mut cpu, &mut bus))
+            compare(&mut cpu, cpu.x, v)
             cpu.cyc = cpu.cyc + 4
         }
         0xC0 => {
-            let v = busRead(bus, aImm(cpu))
-            compare(cpu, cpu.y, v)
+            let v = busRead(&mut bus, aImm(&mut cpu))
+            compare(&mut cpu, cpu.y, v)
             cpu.cyc = cpu.cyc + 2
         }
         0xC4 => {
-            let v = busRead(bus, aZp(cpu, bus))
-            compare(cpu, cpu.y, v)
+            let v = busRead(&mut bus, aZp(&mut cpu, &mut bus))
+            compare(&mut cpu, cpu.y, v)
             cpu.cyc = cpu.cyc + 3
         }
         0xCC => {
-            let v = busRead(bus, aAbs(cpu, bus))
-            compare(cpu, cpu.y, v)
+            let v = busRead(&mut bus, aAbs(&mut cpu, &mut bus))
+            compare(&mut cpu, cpu.y, v)
             cpu.cyc = cpu.cyc + 4
         }
         // ---- BIT ----
         0x24 => {
-            let v = busRead(bus, aZp(cpu, bus))
-            bitTest(cpu, v)
+            let v = busRead(&mut bus, aZp(&mut cpu, &mut bus))
+            bitTest(&mut cpu, v)
             cpu.cyc = cpu.cyc + 3
         }
         0x2C => {
-            let v = busRead(bus, aAbs(cpu, bus))
-            bitTest(cpu, v)
+            let v = busRead(&mut bus, aAbs(&mut cpu, &mut bus))
+            bitTest(&mut cpu, v)
             cpu.cyc = cpu.cyc + 4
         }
         // ---- INC / DEC (memory) ----
         0xE6 => {
-            let a = aZp(cpu, bus)
-            let r = busRead(bus, a).wrappingAdd(1)
-            busWrite(bus, a, r)
-            setZN(cpu, r)
+            let a = aZp(&mut cpu, &mut bus)
+            let r = busRead(&mut bus, a).wrappingAdd(1)
+            busWrite(&mut bus, a, r)
+            setZN(&mut cpu, r)
             cpu.cyc = cpu.cyc + 5
         }
         0xF6 => {
-            let a = aZpX(cpu, bus)
-            let r = busRead(bus, a).wrappingAdd(1)
-            busWrite(bus, a, r)
-            setZN(cpu, r)
+            let a = aZpX(&mut cpu, &mut bus)
+            let r = busRead(&mut bus, a).wrappingAdd(1)
+            busWrite(&mut bus, a, r)
+            setZN(&mut cpu, r)
             cpu.cyc = cpu.cyc + 6
         }
         0xEE => {
-            let a = aAbs(cpu, bus)
-            let r = busRead(bus, a).wrappingAdd(1)
-            busWrite(bus, a, r)
-            setZN(cpu, r)
+            let a = aAbs(&mut cpu, &mut bus)
+            let r = busRead(&mut bus, a).wrappingAdd(1)
+            busWrite(&mut bus, a, r)
+            setZN(&mut cpu, r)
             cpu.cyc = cpu.cyc + 6
         }
         0xFE => {
-            let a = aAbsX(cpu, bus)
-            let r = busRead(bus, a).wrappingAdd(1)
-            busWrite(bus, a, r)
-            setZN(cpu, r)
+            let a = aAbsX(&mut cpu, &mut bus)
+            let r = busRead(&mut bus, a).wrappingAdd(1)
+            busWrite(&mut bus, a, r)
+            setZN(&mut cpu, r)
             cpu.cyc = cpu.cyc + 7
         }
         0xC6 => {
-            let a = aZp(cpu, bus)
-            let r = busRead(bus, a).wrappingSub(1)
-            busWrite(bus, a, r)
-            setZN(cpu, r)
+            let a = aZp(&mut cpu, &mut bus)
+            let r = busRead(&mut bus, a).wrappingSub(1)
+            busWrite(&mut bus, a, r)
+            setZN(&mut cpu, r)
             cpu.cyc = cpu.cyc + 5
         }
         0xD6 => {
-            let a = aZpX(cpu, bus)
-            let r = busRead(bus, a).wrappingSub(1)
-            busWrite(bus, a, r)
-            setZN(cpu, r)
+            let a = aZpX(&mut cpu, &mut bus)
+            let r = busRead(&mut bus, a).wrappingSub(1)
+            busWrite(&mut bus, a, r)
+            setZN(&mut cpu, r)
             cpu.cyc = cpu.cyc + 6
         }
         0xCE => {
-            let a = aAbs(cpu, bus)
-            let r = busRead(bus, a).wrappingSub(1)
-            busWrite(bus, a, r)
-            setZN(cpu, r)
+            let a = aAbs(&mut cpu, &mut bus)
+            let r = busRead(&mut bus, a).wrappingSub(1)
+            busWrite(&mut bus, a, r)
+            setZN(&mut cpu, r)
             cpu.cyc = cpu.cyc + 6
         }
         0xDE => {
-            let a = aAbsX(cpu, bus)
-            let r = busRead(bus, a).wrappingSub(1)
-            busWrite(bus, a, r)
-            setZN(cpu, r)
+            let a = aAbsX(&mut cpu, &mut bus)
+            let r = busRead(&mut bus, a).wrappingSub(1)
+            busWrite(&mut bus, a, r)
+            setZN(&mut cpu, r)
             cpu.cyc = cpu.cyc + 7
         }
         // ---- INX/INY/DEX/DEY ----
         0xE8 => {
             cpu.x = cpu.x.wrappingAdd(1)
-            setZN(cpu, cpu.x)
+            setZN(&mut cpu, cpu.x)
             cpu.cyc = cpu.cyc + 2
         }
         0xC8 => {
             cpu.y = cpu.y.wrappingAdd(1)
-            setZN(cpu, cpu.y)
+            setZN(&mut cpu, cpu.y)
             cpu.cyc = cpu.cyc + 2
         }
         0xCA => {
             cpu.x = cpu.x.wrappingSub(1)
-            setZN(cpu, cpu.x)
+            setZN(&mut cpu, cpu.x)
             cpu.cyc = cpu.cyc + 2
         }
         0x88 => {
             cpu.y = cpu.y.wrappingSub(1)
-            setZN(cpu, cpu.y)
+            setZN(&mut cpu, cpu.y)
             cpu.cyc = cpu.cyc + 2
         }
         // ---- shifts / rotates: accumulator ----
         0x0A => {
-            cpu.a = aslV(cpu, cpu.a)
+            cpu.a = aslV(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 2
         }
         0x4A => {
-            cpu.a = lsrV(cpu, cpu.a)
+            cpu.a = lsrV(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 2
         }
         0x2A => {
-            cpu.a = rolV(cpu, cpu.a)
+            cpu.a = rolV(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 2
         }
         0x6A => {
-            cpu.a = rorV(cpu, cpu.a)
+            cpu.a = rorV(&mut cpu, cpu.a)
             cpu.cyc = cpu.cyc + 2
         }
         // ---- shifts / rotates: memory (zp / zp,X / abs / abs,X) ----
         0x06 => {
-            let a = aZp(cpu, bus)
-            let r = aslV(cpu, busRead(bus, a))
-            busWrite(bus, a, r)
+            let a = aZp(&mut cpu, &mut bus)
+            let r = aslV(&mut cpu, busRead(&mut bus, a))
+            busWrite(&mut bus, a, r)
             cpu.cyc = cpu.cyc + 5
         }
         0x16 => {
-            let a = aZpX(cpu, bus)
-            let r = aslV(cpu, busRead(bus, a))
-            busWrite(bus, a, r)
+            let a = aZpX(&mut cpu, &mut bus)
+            let r = aslV(&mut cpu, busRead(&mut bus, a))
+            busWrite(&mut bus, a, r)
             cpu.cyc = cpu.cyc + 6
         }
         0x0E => {
-            let a = aAbs(cpu, bus)
-            let r = aslV(cpu, busRead(bus, a))
-            busWrite(bus, a, r)
+            let a = aAbs(&mut cpu, &mut bus)
+            let r = aslV(&mut cpu, busRead(&mut bus, a))
+            busWrite(&mut bus, a, r)
             cpu.cyc = cpu.cyc + 6
         }
         0x1E => {
-            let a = aAbsX(cpu, bus)
-            let r = aslV(cpu, busRead(bus, a))
-            busWrite(bus, a, r)
+            let a = aAbsX(&mut cpu, &mut bus)
+            let r = aslV(&mut cpu, busRead(&mut bus, a))
+            busWrite(&mut bus, a, r)
             cpu.cyc = cpu.cyc + 7
         }
         0x46 => {
-            let a = aZp(cpu, bus)
-            let r = lsrV(cpu, busRead(bus, a))
-            busWrite(bus, a, r)
+            let a = aZp(&mut cpu, &mut bus)
+            let r = lsrV(&mut cpu, busRead(&mut bus, a))
+            busWrite(&mut bus, a, r)
             cpu.cyc = cpu.cyc + 5
         }
         0x56 => {
-            let a = aZpX(cpu, bus)
-            let r = lsrV(cpu, busRead(bus, a))
-            busWrite(bus, a, r)
+            let a = aZpX(&mut cpu, &mut bus)
+            let r = lsrV(&mut cpu, busRead(&mut bus, a))
+            busWrite(&mut bus, a, r)
             cpu.cyc = cpu.cyc + 6
         }
         0x4E => {
-            let a = aAbs(cpu, bus)
-            let r = lsrV(cpu, busRead(bus, a))
-            busWrite(bus, a, r)
+            let a = aAbs(&mut cpu, &mut bus)
+            let r = lsrV(&mut cpu, busRead(&mut bus, a))
+            busWrite(&mut bus, a, r)
             cpu.cyc = cpu.cyc + 6
         }
         0x5E => {
-            let a = aAbsX(cpu, bus)
-            let r = lsrV(cpu, busRead(bus, a))
-            busWrite(bus, a, r)
+            let a = aAbsX(&mut cpu, &mut bus)
+            let r = lsrV(&mut cpu, busRead(&mut bus, a))
+            busWrite(&mut bus, a, r)
             cpu.cyc = cpu.cyc + 7
         }
         0x26 => {
-            let a = aZp(cpu, bus)
-            let r = rolV(cpu, busRead(bus, a))
-            busWrite(bus, a, r)
+            let a = aZp(&mut cpu, &mut bus)
+            let r = rolV(&mut cpu, busRead(&mut bus, a))
+            busWrite(&mut bus, a, r)
             cpu.cyc = cpu.cyc + 5
         }
         0x36 => {
-            let a = aZpX(cpu, bus)
-            let r = rolV(cpu, busRead(bus, a))
-            busWrite(bus, a, r)
+            let a = aZpX(&mut cpu, &mut bus)
+            let r = rolV(&mut cpu, busRead(&mut bus, a))
+            busWrite(&mut bus, a, r)
             cpu.cyc = cpu.cyc + 6
         }
         0x2E => {
-            let a = aAbs(cpu, bus)
-            let r = rolV(cpu, busRead(bus, a))
-            busWrite(bus, a, r)
+            let a = aAbs(&mut cpu, &mut bus)
+            let r = rolV(&mut cpu, busRead(&mut bus, a))
+            busWrite(&mut bus, a, r)
             cpu.cyc = cpu.cyc + 6
         }
         0x3E => {
-            let a = aAbsX(cpu, bus)
-            let r = rolV(cpu, busRead(bus, a))
-            busWrite(bus, a, r)
+            let a = aAbsX(&mut cpu, &mut bus)
+            let r = rolV(&mut cpu, busRead(&mut bus, a))
+            busWrite(&mut bus, a, r)
             cpu.cyc = cpu.cyc + 7
         }
         0x66 => {
-            let a = aZp(cpu, bus)
-            let r = rorV(cpu, busRead(bus, a))
-            busWrite(bus, a, r)
+            let a = aZp(&mut cpu, &mut bus)
+            let r = rorV(&mut cpu, busRead(&mut bus, a))
+            busWrite(&mut bus, a, r)
             cpu.cyc = cpu.cyc + 5
         }
         0x76 => {
-            let a = aZpX(cpu, bus)
-            let r = rorV(cpu, busRead(bus, a))
-            busWrite(bus, a, r)
+            let a = aZpX(&mut cpu, &mut bus)
+            let r = rorV(&mut cpu, busRead(&mut bus, a))
+            busWrite(&mut bus, a, r)
             cpu.cyc = cpu.cyc + 6
         }
         0x6E => {
-            let a = aAbs(cpu, bus)
-            let r = rorV(cpu, busRead(bus, a))
-            busWrite(bus, a, r)
+            let a = aAbs(&mut cpu, &mut bus)
+            let r = rorV(&mut cpu, busRead(&mut bus, a))
+            busWrite(&mut bus, a, r)
             cpu.cyc = cpu.cyc + 6
         }
         0x7E => {
-            let a = aAbsX(cpu, bus)
-            let r = rorV(cpu, busRead(bus, a))
-            busWrite(bus, a, r)
+            let a = aAbsX(&mut cpu, &mut bus)
+            let r = rorV(&mut cpu, busRead(&mut bus, a))
+            busWrite(&mut bus, a, r)
             cpu.cyc = cpu.cyc + 7
         }
         // ---- jumps / subroutine ----
         0x4C => {
-            cpu.pc = aAbs(cpu, bus)
+            cpu.pc = aAbs(&mut cpu, &mut bus)
             cpu.cyc = cpu.cyc + 3
         }
         0x6C => {
-            let a = fetch16(cpu, bus)
-            cpu.pc = read16Bug(bus, a)
+            let a = fetch16(&mut cpu, &mut bus)
+            cpu.pc = read16Bug(&mut bus, a)
             cpu.cyc = cpu.cyc + 5
         }
         0x20 => {
-            let target = fetch16(cpu, bus)
-            push16(cpu, bus, wrap16((cpu.pc as i64) - 1))
+            let target = fetch16(&mut cpu, &mut bus)
+            push16(&mut cpu, &mut bus, wrap16((cpu.pc as i64) - 1))
             cpu.pc = target
             cpu.cyc = cpu.cyc + 6
         }
         0x60 => {
-            cpu.pc = wrap16((pop16(cpu, bus) as i64) + 1)
+            cpu.pc = wrap16((pop16(&mut cpu, &mut bus) as i64) + 1)
             cpu.cyc = cpu.cyc + 6
         }
         0x40 => {
-            let v = pop8(cpu, bus)
+            let v = pop8(&mut cpu, &mut bus)
             cpu.p = (v & (~FB)) | FU
-            cpu.pc = pop16(cpu, bus)
+            cpu.pc = pop16(&mut cpu, &mut bus)
             cpu.cyc = cpu.cyc + 6
         }
         // ---- branches (base 2 branch() adds taken/page-cross) ----
         0x90 => {
-            branch(cpu, bus,!cpuFlag(cpu, FC))
+            branch(&mut cpu, &mut bus,!cpuFlag(cpu, FC))
             cpu.cyc = cpu.cyc + 2
         }
         0xB0 => {
-            branch(cpu, bus, cpuFlag(cpu, FC))
+            branch(&mut cpu, &mut bus, cpuFlag(cpu, FC))
             cpu.cyc = cpu.cyc + 2
         }
         0xD0 => {
-            branch(cpu, bus,!cpuFlag(cpu, FZ))
+            branch(&mut cpu, &mut bus,!cpuFlag(cpu, FZ))
             cpu.cyc = cpu.cyc + 2
         }
         0xF0 => {
-            branch(cpu, bus, cpuFlag(cpu, FZ))
+            branch(&mut cpu, &mut bus, cpuFlag(cpu, FZ))
             cpu.cyc = cpu.cyc + 2
         }
         0x10 => {
-            branch(cpu, bus,!cpuFlag(cpu, FN))
+            branch(&mut cpu, &mut bus,!cpuFlag(cpu, FN))
             cpu.cyc = cpu.cyc + 2
         }
         0x30 => {
-            branch(cpu, bus, cpuFlag(cpu, FN))
+            branch(&mut cpu, &mut bus, cpuFlag(cpu, FN))
             cpu.cyc = cpu.cyc + 2
         }
         0x50 => {
-            branch(cpu, bus,!cpuFlag(cpu, FV))
+            branch(&mut cpu, &mut bus,!cpuFlag(cpu, FV))
             cpu.cyc = cpu.cyc + 2
         }
         0x70 => {
-            branch(cpu, bus, cpuFlag(cpu, FV))
+            branch(&mut cpu, &mut bus, cpuFlag(cpu, FV))
             cpu.cyc = cpu.cyc + 2
         }
         // ---- flag ops ----
         0x18 => {
-            setFlag(cpu, FC, false)
+            setFlag(&mut cpu, FC, false)
             cpu.cyc = cpu.cyc + 2
         }
         0x38 => {
-            setFlag(cpu, FC, true)
+            setFlag(&mut cpu, FC, true)
             cpu.cyc = cpu.cyc + 2
         }
         0x58 => {
-            setFlag(cpu, FI, false)
+            setFlag(&mut cpu, FI, false)
             cpu.cyc = cpu.cyc + 2
         }
         0x78 => {
-            setFlag(cpu, FI, true)
+            setFlag(&mut cpu, FI, true)
             cpu.cyc = cpu.cyc + 2
         }
         0xB8 => {
-            setFlag(cpu, FV, false)
+            setFlag(&mut cpu, FV, false)
             cpu.cyc = cpu.cyc + 2
         }
         0xD8 => {
-            setFlag(cpu, FD, false)
+            setFlag(&mut cpu, FD, false)
             cpu.cyc = cpu.cyc + 2
         }
         0xF8 => {
-            setFlag(cpu, FD, true)
+            setFlag(&mut cpu, FD, true)
             cpu.cyc = cpu.cyc + 2
         }
         // ---- NOP ----
@@ -1818,413 +1818,413 @@ pub fn step(cpu: &mut Cpu, bus: &mut Bus): void {
         }
         // 2-byte immediate NOPs (2 cyc): consume operand, discard
         0x80 => {
-            let a = aImm(cpu)
+            let a = aImm(&mut cpu)
             cpu.cyc = cpu.cyc + 2
         }
         0x82 => {
-            let a = aImm(cpu)
+            let a = aImm(&mut cpu)
             cpu.cyc = cpu.cyc + 2
         }
         0x89 => {
-            let a = aImm(cpu)
+            let a = aImm(&mut cpu)
             cpu.cyc = cpu.cyc + 2
         }
         0xC2 => {
-            let a = aImm(cpu)
+            let a = aImm(&mut cpu)
             cpu.cyc = cpu.cyc + 2
         }
         0xE2 => {
-            let a = aImm(cpu)
+            let a = aImm(&mut cpu)
             cpu.cyc = cpu.cyc + 2
         }
         // 2-byte zeropage NOPs (3 cyc)
         0x04 => {
-            let a = aZp(cpu, bus)
+            let a = aZp(&mut cpu, &mut bus)
             cpu.cyc = cpu.cyc + 3
         }
         0x44 => {
-            let a = aZp(cpu, bus)
+            let a = aZp(&mut cpu, &mut bus)
             cpu.cyc = cpu.cyc + 3
         }
         0x64 => {
-            let a = aZp(cpu, bus)
+            let a = aZp(&mut cpu, &mut bus)
             cpu.cyc = cpu.cyc + 3
         }
         // 2-byte zeropage,X NOPs (4 cyc)
         0x14 => {
-            let a = aZpX(cpu, bus)
+            let a = aZpX(&mut cpu, &mut bus)
             cpu.cyc = cpu.cyc + 4
         }
         0x34 => {
-            let a = aZpX(cpu, bus)
+            let a = aZpX(&mut cpu, &mut bus)
             cpu.cyc = cpu.cyc + 4
         }
         0x54 => {
-            let a = aZpX(cpu, bus)
+            let a = aZpX(&mut cpu, &mut bus)
             cpu.cyc = cpu.cyc + 4
         }
         0x74 => {
-            let a = aZpX(cpu, bus)
+            let a = aZpX(&mut cpu, &mut bus)
             cpu.cyc = cpu.cyc + 4
         }
         0xD4 => {
-            let a = aZpX(cpu, bus)
+            let a = aZpX(&mut cpu, &mut bus)
             cpu.cyc = cpu.cyc + 4
         }
         0xF4 => {
-            let a = aZpX(cpu, bus)
+            let a = aZpX(&mut cpu, &mut bus)
             cpu.cyc = cpu.cyc + 4
         }
         // 3-byte absolute NOP (4 cyc)
         0x0C => {
-            let a = aAbs(cpu, bus)
+            let a = aAbs(&mut cpu, &mut bus)
             cpu.cyc = cpu.cyc + 4
         }
         // 3-byte absolute,X NOPs (4 cyc + page cross) — a read access
         0x1C => {
-            let a = aAbsX(cpu, bus)
-            let v = busRead(bus, a)
+            let a = aAbsX(&mut cpu, &mut bus)
+            let v = busRead(&mut bus, a)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0x3C => {
-            let a = aAbsX(cpu, bus)
-            let v = busRead(bus, a)
+            let a = aAbsX(&mut cpu, &mut bus)
+            let v = busRead(&mut bus, a)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0x5C => {
-            let a = aAbsX(cpu, bus)
-            let v = busRead(bus, a)
+            let a = aAbsX(&mut cpu, &mut bus)
+            let v = busRead(&mut bus, a)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0x7C => {
-            let a = aAbsX(cpu, bus)
-            let v = busRead(bus, a)
+            let a = aAbsX(&mut cpu, &mut bus)
+            let v = busRead(&mut bus, a)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0xDC => {
-            let a = aAbsX(cpu, bus)
-            let v = busRead(bus, a)
+            let a = aAbsX(&mut cpu, &mut bus)
+            let v = busRead(&mut bus, a)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0xFC => {
-            let a = aAbsX(cpu, bus)
-            let v = busRead(bus, a)
+            let a = aAbsX(&mut cpu, &mut bus)
+            let v = busRead(&mut bus, a)
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         // ---- LAX (load A and X) ----
         0xA7 => {
-            lax(cpu, bus, aZp(cpu, bus))
+            lax(&mut cpu, &mut bus, aZp(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 3
         }
         0xB7 => {
-            lax(cpu, bus, aZpY(cpu, bus))
+            lax(&mut cpu, &mut bus, aZpY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 4
         }
         0xAF => {
-            lax(cpu, bus, aAbs(cpu, bus))
+            lax(&mut cpu, &mut bus, aAbs(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 4
         }
         0xBF => {
-            lax(cpu, bus, aAbsY(cpu, bus))
+            lax(&mut cpu, &mut bus, aAbsY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0xA3 => {
-            lax(cpu, bus, aIndX(cpu, bus))
+            lax(&mut cpu, &mut bus, aIndX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 6
         }
         0xB3 => {
-            lax(cpu, bus, aIndY(cpu, bus))
+            lax(&mut cpu, &mut bus, aIndY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 5 + cpu.extraCycles
         }
         // ---- SAX (store A & X) ----
         0x87 => {
-            sax(cpu, bus, aZp(cpu, bus))
+            sax(&mut cpu, &mut bus, aZp(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 3
         }
         0x97 => {
-            sax(cpu, bus, aZpY(cpu, bus))
+            sax(&mut cpu, &mut bus, aZpY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 4
         }
         0x8F => {
-            sax(cpu, bus, aAbs(cpu, bus))
+            sax(&mut cpu, &mut bus, aAbs(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 4
         }
         0x83 => {
-            sax(cpu, bus, aIndX(cpu, bus))
+            sax(&mut cpu, &mut bus, aIndX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 6
         }
         // ---- unofficial SBC (== official SBC imm) ----
         0xEB => {
-            let v = busRead(bus, aImm(cpu))
-            sbc(cpu, v)
+            let v = busRead(&mut bus, aImm(&mut cpu))
+            sbc(&mut cpu, v)
             cpu.cyc = cpu.cyc + 2
         }
         // ---- DCP (DEC + CMP) — RMW, fixed cycles (no page-cross add) ----
         0xC7 => {
-            dcp(cpu, bus, aZp(cpu, bus))
+            dcp(&mut cpu, &mut bus, aZp(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 5
         }
         0xD7 => {
-            dcp(cpu, bus, aZpX(cpu, bus))
+            dcp(&mut cpu, &mut bus, aZpX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 6
         }
         0xCF => {
-            dcp(cpu, bus, aAbs(cpu, bus))
+            dcp(&mut cpu, &mut bus, aAbs(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 6
         }
         0xDF => {
-            dcp(cpu, bus, aAbsX(cpu, bus))
+            dcp(&mut cpu, &mut bus, aAbsX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 7
         }
         0xDB => {
-            dcp(cpu, bus, aAbsY(cpu, bus))
+            dcp(&mut cpu, &mut bus, aAbsY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 7
         }
         0xC3 => {
-            dcp(cpu, bus, aIndX(cpu, bus))
+            dcp(&mut cpu, &mut bus, aIndX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 8
         }
         0xD3 => {
-            dcp(cpu, bus, aIndY(cpu, bus))
+            dcp(&mut cpu, &mut bus, aIndY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 8
         }
         // ---- ISB/ISC (INC + SBC) ----
         0xE7 => {
-            isb(cpu, bus, aZp(cpu, bus))
+            isb(&mut cpu, &mut bus, aZp(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 5
         }
         0xF7 => {
-            isb(cpu, bus, aZpX(cpu, bus))
+            isb(&mut cpu, &mut bus, aZpX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 6
         }
         0xEF => {
-            isb(cpu, bus, aAbs(cpu, bus))
+            isb(&mut cpu, &mut bus, aAbs(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 6
         }
         0xFF => {
-            isb(cpu, bus, aAbsX(cpu, bus))
+            isb(&mut cpu, &mut bus, aAbsX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 7
         }
         0xFB => {
-            isb(cpu, bus, aAbsY(cpu, bus))
+            isb(&mut cpu, &mut bus, aAbsY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 7
         }
         0xE3 => {
-            isb(cpu, bus, aIndX(cpu, bus))
+            isb(&mut cpu, &mut bus, aIndX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 8
         }
         0xF3 => {
-            isb(cpu, bus, aIndY(cpu, bus))
+            isb(&mut cpu, &mut bus, aIndY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 8
         }
         // ---- SLO (ASL + ORA) ----
         0x07 => {
-            slo(cpu, bus, aZp(cpu, bus))
+            slo(&mut cpu, &mut bus, aZp(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 5
         }
         0x17 => {
-            slo(cpu, bus, aZpX(cpu, bus))
+            slo(&mut cpu, &mut bus, aZpX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 6
         }
         0x0F => {
-            slo(cpu, bus, aAbs(cpu, bus))
+            slo(&mut cpu, &mut bus, aAbs(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 6
         }
         0x1F => {
-            slo(cpu, bus, aAbsX(cpu, bus))
+            slo(&mut cpu, &mut bus, aAbsX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 7
         }
         0x1B => {
-            slo(cpu, bus, aAbsY(cpu, bus))
+            slo(&mut cpu, &mut bus, aAbsY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 7
         }
         0x03 => {
-            slo(cpu, bus, aIndX(cpu, bus))
+            slo(&mut cpu, &mut bus, aIndX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 8
         }
         0x13 => {
-            slo(cpu, bus, aIndY(cpu, bus))
+            slo(&mut cpu, &mut bus, aIndY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 8
         }
         // ---- RLA (ROL + AND) ----
         0x27 => {
-            rla(cpu, bus, aZp(cpu, bus))
+            rla(&mut cpu, &mut bus, aZp(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 5
         }
         0x37 => {
-            rla(cpu, bus, aZpX(cpu, bus))
+            rla(&mut cpu, &mut bus, aZpX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 6
         }
         0x2F => {
-            rla(cpu, bus, aAbs(cpu, bus))
+            rla(&mut cpu, &mut bus, aAbs(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 6
         }
         0x3F => {
-            rla(cpu, bus, aAbsX(cpu, bus))
+            rla(&mut cpu, &mut bus, aAbsX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 7
         }
         0x3B => {
-            rla(cpu, bus, aAbsY(cpu, bus))
+            rla(&mut cpu, &mut bus, aAbsY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 7
         }
         0x23 => {
-            rla(cpu, bus, aIndX(cpu, bus))
+            rla(&mut cpu, &mut bus, aIndX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 8
         }
         0x33 => {
-            rla(cpu, bus, aIndY(cpu, bus))
+            rla(&mut cpu, &mut bus, aIndY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 8
         }
         // ---- SRE (LSR + EOR) ----
         0x47 => {
-            sre(cpu, bus, aZp(cpu, bus))
+            sre(&mut cpu, &mut bus, aZp(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 5
         }
         0x57 => {
-            sre(cpu, bus, aZpX(cpu, bus))
+            sre(&mut cpu, &mut bus, aZpX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 6
         }
         0x4F => {
-            sre(cpu, bus, aAbs(cpu, bus))
+            sre(&mut cpu, &mut bus, aAbs(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 6
         }
         0x5F => {
-            sre(cpu, bus, aAbsX(cpu, bus))
+            sre(&mut cpu, &mut bus, aAbsX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 7
         }
         0x5B => {
-            sre(cpu, bus, aAbsY(cpu, bus))
+            sre(&mut cpu, &mut bus, aAbsY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 7
         }
         0x43 => {
-            sre(cpu, bus, aIndX(cpu, bus))
+            sre(&mut cpu, &mut bus, aIndX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 8
         }
         0x53 => {
-            sre(cpu, bus, aIndY(cpu, bus))
+            sre(&mut cpu, &mut bus, aIndY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 8
         }
         // ---- RRA (ROR + ADC) ----
         0x67 => {
-            rra(cpu, bus, aZp(cpu, bus))
+            rra(&mut cpu, &mut bus, aZp(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 5
         }
         0x77 => {
-            rra(cpu, bus, aZpX(cpu, bus))
+            rra(&mut cpu, &mut bus, aZpX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 6
         }
         0x6F => {
-            rra(cpu, bus, aAbs(cpu, bus))
+            rra(&mut cpu, &mut bus, aAbs(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 6
         }
         0x7F => {
-            rra(cpu, bus, aAbsX(cpu, bus))
+            rra(&mut cpu, &mut bus, aAbsX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 7
         }
         0x7B => {
-            rra(cpu, bus, aAbsY(cpu, bus))
+            rra(&mut cpu, &mut bus, aAbsY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 7
         }
         0x63 => {
-            rra(cpu, bus, aIndX(cpu, bus))
+            rra(&mut cpu, &mut bus, aIndX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 8
         }
         0x73 => {
-            rra(cpu, bus, aIndY(cpu, bus))
+            rra(&mut cpu, &mut bus, aIndY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 8
         }
         // ---- unofficial: immediate ALU ----
         0x0B => { // ANC
-            anc(cpu, busRead(bus, aImm(cpu)))
+            anc(&mut cpu, busRead(&mut bus, aImm(&mut cpu)))
             cpu.cyc = cpu.cyc + 2
         }
         0x2B => { // ANC (mirror)
-            anc(cpu, busRead(bus, aImm(cpu)))
+            anc(&mut cpu, busRead(&mut bus, aImm(&mut cpu)))
             cpu.cyc = cpu.cyc + 2
         }
         0x4B => { // ALR / ASR
-            alr(cpu, busRead(bus, aImm(cpu)))
+            alr(&mut cpu, busRead(&mut bus, aImm(&mut cpu)))
             cpu.cyc = cpu.cyc + 2
         }
         0x6B => { // ARR
-            arr(cpu, busRead(bus, aImm(cpu)))
+            arr(&mut cpu, busRead(&mut bus, aImm(&mut cpu)))
             cpu.cyc = cpu.cyc + 2
         }
         0xCB => { // SBX / AXS
-            sbx(cpu, busRead(bus, aImm(cpu)))
+            sbx(&mut cpu, busRead(&mut bus, aImm(&mut cpu)))
             cpu.cyc = cpu.cyc + 2
         }
         0xAB => { // LXA / LAX #imm
-            lxa(cpu, busRead(bus, aImm(cpu)))
+            lxa(&mut cpu, busRead(&mut bus, aImm(&mut cpu)))
             cpu.cyc = cpu.cyc + 2
         }
         0x8B => { // ANE / XAA
-            ane(cpu, busRead(bus, aImm(cpu)))
+            ane(&mut cpu, busRead(&mut bus, aImm(&mut cpu)))
             cpu.cyc = cpu.cyc + 2
         }
         // ---- unofficial: LAS (read), SH* / TAS (unstable stores) ----
         0xBB => { // LAS
-            las(cpu, bus, aAbsY(cpu, bus))
+            las(&mut cpu, &mut bus, aAbsY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0x9F => { // SHA abs,Y
-            sha(cpu, bus, aAbsY(cpu, bus))
+            sha(&mut cpu, &mut bus, aAbsY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 5
         }
         0x93 => { // SHA (ind),Y
-            sha(cpu, bus, aIndY(cpu, bus))
+            sha(&mut cpu, &mut bus, aIndY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 6
         }
         0x9E => { // SHX abs,Y
-            shx(cpu, bus, aAbsY(cpu, bus))
+            shx(&mut cpu, &mut bus, aAbsY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 5
         }
         0x9C => { // SHY abs,X
-            shy(cpu, bus, aAbsX(cpu, bus))
+            shy(&mut cpu, &mut bus, aAbsX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 5
         }
         0x9B => { // TAS / SHS
-            tas(cpu, bus, aAbsY(cpu, bus))
+            tas(&mut cpu, &mut bus, aAbsY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 5
         }
         // ---- JAM / KIL: a real 6502 locks up until reset. Freeze on the opcode
         // (rewind the fetch) so PC stalls like hardware; the frame loop still
         // advances via NMI, keeping the emulator responsive to reset/game-switch.
         0x02 => {
-            jam(cpu)
+            jam(&mut cpu)
         }
         0x12 => {
-            jam(cpu)
+            jam(&mut cpu)
         }
         0x22 => {
-            jam(cpu)
+            jam(&mut cpu)
         }
         0x32 => {
-            jam(cpu)
+            jam(&mut cpu)
         }
         0x42 => {
-            jam(cpu)
+            jam(&mut cpu)
         }
         0x52 => {
-            jam(cpu)
+            jam(&mut cpu)
         }
         0x62 => {
-            jam(cpu)
+            jam(&mut cpu)
         }
         0x72 => {
-            jam(cpu)
+            jam(&mut cpu)
         }
         0x92 => {
-            jam(cpu)
+            jam(&mut cpu)
         }
         0xB2 => {
-            jam(cpu)
+            jam(&mut cpu)
         }
         0xD2 => {
-            jam(cpu)
+            jam(&mut cpu)
         }
         0xF2 => {
-            jam(cpu)
+            jam(&mut cpu)
         }
         _ => {
             // Every 8-bit pattern is now decoded (official + all undocumented).

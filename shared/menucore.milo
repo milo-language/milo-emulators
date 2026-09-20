@@ -290,9 +290,9 @@ fn addSystem(rows: &mut Vec<Row>, sel: &mut Vec<i64>, title: string, sys: string
 }
 
 pub fn buildRows(rows: &mut Vec<Row>, sel: &mut Vec<i64>): void {
-    addSystem(rows, sel, "NES", "nes")
-    addSystem(rows, sel, "GENESIS", "genesis")
-    addSystem(rows, sel, "SNES", "snes")
+    addSystem(&mut rows, &mut sel, "NES", "nes")
+    addSystem(&mut rows, &mut sel, "GENESIS", "genesis")
+    addSystem(&mut rows, &mut sel, "SNES", "snes")
 }
 
 // Row layout constants (framebuffer pixels).
@@ -308,8 +308,8 @@ pub fn render(fb: &mut [u32; 230400], rows: &Vec<Row>, selRow: i64, scrollTop: i
     let barText = rgb(12, 14, 24)
     let footCol = rgb(120, 128, 150)
 
-    clear(fb, bg)
-    drawTextCentered(fb, "MILO RETRO CONSOLE", 14, 3, gold, font, glyphs)
+    clear(&mut fb, bg)
+    drawTextCentered(&mut fb, "MILO RETRO CONSOLE", 14, 3, gold, font, glyphs)
 
     var i = scrollTop
     var drawn: i64 = 0
@@ -317,15 +317,15 @@ pub fn render(fb: &mut [u32; 230400], rows: &Vec<Row>, selRow: i64, scrollTop: i
         let kind = rows[i].kind
         let y = LIST_TOP + drawn * ROW_H
         if kind == 0 {
-            drawText(fb, rows[i].label, 24, y, 2, gold, font, glyphs)
+            drawText(&mut fb, rows[i].label, 24, y, 2, gold, font, glyphs)
         } else if kind == 2 {
-            drawText(fb, rows[i].label, 48, y, 2, noteCol, font, glyphs)
+            drawText(&mut fb, rows[i].label, 48, y, 2, noteCol, font, glyphs)
         } else {
             if i == selRow {
-                fillRect(fb, 40, y - 3, MENU_W - 80, ROW_H - 2, barCol)
-                drawText(fb, rows[i].label, 48, y, 2, barText, font, glyphs)
+                fillRect(&mut fb, 40, y - 3, MENU_W - 80, ROW_H - 2, barCol)
+                drawText(&mut fb, rows[i].label, 48, y, 2, barText, font, glyphs)
             } else {
-                drawText(fb, rows[i].label, 48, y, 2, romCol, font, glyphs)
+                drawText(&mut fb, rows[i].label, 48, y, 2, romCol, font, glyphs)
             }
         }
         i = i + 1
@@ -333,5 +333,5 @@ pub fn render(fb: &mut [u32; 230400], rows: &Vec<Row>, selRow: i64, scrollTop: i
     }
 
     let foot = "UP/DOWN MOVE   A/ENTER PLAY   B/ESC QUIT"
-    drawText(fb, foot, (MENU_W - textWidth(foot, 1)) / 2, MENU_H - 16, 1, footCol, font, glyphs)
+    drawText(&mut fb, foot, (MENU_W - textWidth(foot, 1)) / 2, MENU_H - 16, 1, footCol, font, glyphs)
 }

@@ -92,16 +92,16 @@ fn setButtons2(h: &mut SnesHandle, j: i64): void {
 // RGBA buffer the driver uploads to its canvas. (Named `advanceFrame` because the
 // core's per-frame step is also `stepFrame`; Milo has no import aliasing.)
 fn advanceFrame(h: &mut SnesHandle): void {
-    stepFrame(h.cpu, h.m)
+    stepFrame(&mut h.cpu, &mut h.m)
 
-    dspGenerate(h.m.apuMem, h.apuBuf, APU_FRAME)
+    dspGenerate(&mut h.m.apuMem, &mut h.apuBuf, APU_FRAME)
     var s: i64 = 0
     while s < APU_FRAME * 2 {
         h.samples.push(h.apuBuf[s] as i16)
         s = s + 1
     }
 
-    renderFrame(h.m.ppu, h.fb)
+    renderFrame(h.m.ppu, &mut h.fb)
     var i: i64 = 0
     while i < SNES_W * SNES_H {
         let c = h.fb[i]

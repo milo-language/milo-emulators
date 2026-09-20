@@ -60,7 +60,7 @@ fn main(): i32 {
 
     var f: i64 = 0
     while f < 5 {
-        stepFrame(cpu, m)
+        stepFrame(&mut cpu, &mut m)
         f = f + 1
     }
 

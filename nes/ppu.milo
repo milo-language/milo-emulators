@@ -107,7 +107,7 @@ fn mmc2UpdateChr(ppu: &mut Ppu): void {
 
 pub fn mmc2InitMapper(ppu: &mut Ppu): void {
     ppu.mmc2 = true
-    mmc2UpdateChr(ppu)
+    mmc2UpdateChr(&mut ppu)
 }
 
 // CPU-side CHR bank register write: which = 0:FD0 1:FE0 2:FD1 3:FE1.
@@ -121,7 +121,7 @@ pub fn mmc2SetChr(ppu: &mut Ppu, which: i64, bank: i64): void {
     } else {
         ppu.mmc2ChrFE1 = bank
     }
-    mmc2UpdateChr(ppu)
+    mmc2UpdateChr(&mut ppu)
 }
 
 // Flip a latch when the PPU reads the high plane of tile $FD/$FE ($xFD8-$xFDF /
@@ -150,7 +150,7 @@ fn mmc2Latch(ppu: &mut Ppu, a: i64): void {
         }
     }
     if changed {
-        mmc2UpdateChr(ppu)
+        mmc2UpdateChr(&mut ppu)
     }
 }
 
@@ -183,7 +183,7 @@ fn mmc2ExtraBgFetches(ppu: &mut Ppu, scrollX: i64, scrollY: i64): void {
         let ntBase = 0x2000 + (ntY * 2 + ntX) * 0x400
         let col = (wx & 0xFF) / 8
         let tile = ppuMemRead(ppu, (ntBase + row * 32 + col) as u16) as i64
-        mmc2Latch(ppu, bgTable + tile * 16 + fy + 8) // high-plane address triggers
+        mmc2Latch(&mut ppu, bgTable + tile * 16 + fy + 8) // high-plane address triggers
         k = k + 1
     }
 }
@@ -346,7 +346,7 @@ pub fn ppuRegWrite(ppu: &mut Ppu, reg: i64, val: u8): void {
         return
     }
     if reg == 7 {
-        ppuMemWrite(ppu, ppu.v, val)
+        ppuMemWrite(&mut ppu, ppu.v, val)
         let inc: i64 = if (ppu.ctrl & 0x04) != 0 {
             32
         } else {
@@ -394,9 +394,9 @@ pub fn ppuStep(ppu: &mut Ppu): void {
     }
     let rendering = (ppu.mask & 0x18) != 0
     if ppu.dot == 256 && ppu.scanline < 240 {
-        renderScanline(ppu, ppu.scanline)
+        renderScanline(&mut ppu, ppu.scanline)
         if rendering {
-            incrementY(ppu)
+            incrementY(&mut ppu)
         }
     }
     // Pre-render line: reload v's vertical bits from t for the coming frame.
@@ -412,7 +412,7 @@ pub fn ppuStep(ppu: &mut Ppu): void {
         let t = ppu.t as i64
         let sx = ((t >> 10) & 1) * 256 + (t & 0x1F) * 8 + (ppu.fineX as i64)
         let sy = ((t >> 11) & 1) * 240 + ((t >> 5) & 0x1F) * 8 + ((t >> 12) & 7)
-        mmc2ExtraBgFetches(ppu, sx, sy)
+        mmc2ExtraBgFetches(&mut ppu, sx, sy)
     }
     if ppu.scanline == 241 && ppu.dot == 1 {
         ppu.status = ppu.status | 0x80 // set vblank
@@ -488,7 +488,7 @@ fn renderScanline(ppu: &mut Ppu, sl: i64): void {
                 lo = ppuMemRead(ppu, patAddr as u16) as i64
                 hi = ppuMemRead(ppu, (patAddr + 8) as u16) as i64
                 if ppu.mmc2 {
-                    mmc2Latch(ppu, patAddr + 8) // tile $FD/$FE high plane flips the latch
+                    mmc2Latch(&mut ppu, patAddr + 8) // tile $FD/$FE high plane flips the latch
                 }
             }
             let bit = 7 - (wx & 7)
@@ -502,7 +502,7 @@ fn renderScanline(ppu: &mut Ppu, sl: i64): void {
             x = x + 1
         }
         if ppu.mmc2 {
-            mmc2ExtraBgFetches(ppu, ppu.scrollX, ppu.scrollY)
+            mmc2ExtraBgFetches(&mut ppu, ppu.scrollX, ppu.scrollY)
         }
     } else {
         var x: i64 = 0
@@ -511,7 +511,7 @@ fn renderScanline(ppu: &mut Ppu, sl: i64): void {
             x = x + 1
         }
     }
-    renderSpriteLine(ppu, sl, bgOpaque)
+    renderSpriteLine(&mut ppu, sl, bgOpaque)
 }
 
 // Draw the sprites covering scanline sl. Back-to-front so lower OAM index wins;
@@ -567,7 +567,7 @@ fn renderSpriteLine(ppu: &mut Ppu, sl: i64, bgOpaque: [u8; 256]): void {
             let lo = ppuMemRead(ppu, patAddr as u16) as i64
             let hi = ppuMemRead(ppu, (patAddr + 8) as u16) as i64
             if ppu.mmc2 {
-                mmc2Latch(ppu, patAddr + 8)
+                mmc2Latch(&mut ppu, patAddr + 8)
             }
             var fx: i64 = 0
             while fx < 8 {

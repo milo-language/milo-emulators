@@ -21,66 +21,66 @@ fn hex6(v: i64): string {
 }
 
 fn vword(p: &mut Ppu, w: i64): void {
-    ppuRegWrite(p, 0x18, w & 0xFF)
-    ppuRegWrite(p, 0x19, (w >> 8) & 0xFF)
+    ppuRegWrite(&mut p, 0x18, w & 0xFF)
+    ppuRegWrite(&mut p, 0x19, (w >> 8) & 0xFF)
 }
 
 // Write a solid 4bpp tile (color index 1) at VRAM word `addr`.
 fn solidTile(p: &mut Ppu, addr: i64): void {
-    ppuRegWrite(p, 0x16, addr & 0xFF)
-    ppuRegWrite(p, 0x17, (addr >> 8) & 0xFF)
+    ppuRegWrite(&mut p, 0x16, addr & 0xFF)
+    ppuRegWrite(&mut p, 0x17, (addr >> 8) & 0xFF)
     var r: i64 = 0
     while r < 8 {
-        vword(p, 0x00FF) // plane0 = 0xFF -> index bit0 set
+        vword(&mut p, 0x00FF) // plane0 = 0xFF -> index bit0 set
         r = r + 1
     }
     r = 0
     while r < 8 {
-        vword(p, 0x0000) // planes 2/3 = 0
+        vword(&mut p, 0x0000) // planes 2/3 = 0
         r = r + 1
     }
 }
 
 fn setColor(p: &mut Ppu, idx: i64, bgr555: i64): void {
-    ppuRegWrite(p, 0x21, idx)
-    ppuRegWrite(p, 0x22, bgr555 & 0xFF)
-    ppuRegWrite(p, 0x22, (bgr555 >> 8) & 0xFF)
+    ppuRegWrite(&mut p, 0x21, idx)
+    ppuRegWrite(&mut p, 0x22, bgr555 & 0xFF)
+    ppuRegWrite(&mut p, 0x22, (bgr555 >> 8) & 0xFF)
 }
 
 fn main(): i32 {
     var p = newPpu()
-    ppuRegWrite(p, 0x00, 0x0F) // full brightness
-    ppuRegWrite(p, 0x05, 0x01) // BGMODE = 1 (BG3-priority bit off)
-    ppuRegWrite(p, 0x15, 0x80) // VMAIN increment on high write
-    ppuRegWrite(p, 0x0B, 0x01) // bg12nba: BG1 char base = word $1000
-    ppuRegWrite(p, 0x07, 0x00) // bgsc0: BG1 tilemap base word $0000, size 0
-    ppuRegWrite(p, 0x01, 0x01) // OBSEL: OBJ char base = word $2000
-    ppuRegWrite(p, 0x2C, 0x11) // TM = BG1 + OBJ
+    ppuRegWrite(&mut p, 0x00, 0x0F) // full brightness
+    ppuRegWrite(&mut p, 0x05, 0x01) // BGMODE = 1 (BG3-priority bit off)
+    ppuRegWrite(&mut p, 0x15, 0x80) // VMAIN increment on high write
+    ppuRegWrite(&mut p, 0x0B, 0x01) // bg12nba: BG1 char base = word $1000
+    ppuRegWrite(&mut p, 0x07, 0x00) // bgsc0: BG1 tilemap base word $0000, size 0
+    ppuRegWrite(&mut p, 0x01, 0x01) // OBSEL: OBJ char base = word $2000
+    ppuRegWrite(&mut p, 0x2C, 0x11) // TM = BG1 + OBJ
 
-    solidTile(p, 0x1000) // BG1 tile 0 (red via CGRAM 1)
-    solidTile(p, 0x2000) // OBJ tile 0 (green via CGRAM 129)
-    setColor(p, 1, 0x001F) // BG index 1 = red   -> 0xF80000
-    setColor(p, 129, 0x03E0) // OBJ index 1 = green -> 0x00F800
+    solidTile(&mut p, 0x1000) // BG1 tile 0 (red via CGRAM 1)
+    solidTile(&mut p, 0x2000) // OBJ tile 0 (green via CGRAM 129)
+    setColor(&mut p, 1, 0x001F) // BG index 1 = red   -> 0xF80000
+    setColor(&mut p, 129, 0x03E0) // OBJ index 1 = green -> 0x00F800
 
     // BG1 tilemap: tile (0,0) with priority bit (entry bit13); tile (0,5) without.
-    ppuRegWrite(p, 0x16, 0x00)
-    ppuRegWrite(p, 0x17, 0x00) // VMADDR = $0000 (tilemap)
-    vword(p, 0x2000) // (0,0): tile0, pal0, priority 1
-    ppuRegWrite(p, 0x16, 0xA0)
-    ppuRegWrite(p, 0x17, 0x00) // VMADDR = $00A0 (row 5 * 32)
-    vword(p, 0x0000) // (0,5): tile0, pal0, priority 0
+    ppuRegWrite(&mut p, 0x16, 0x00)
+    ppuRegWrite(&mut p, 0x17, 0x00) // VMADDR = $0000 (tilemap)
+    vword(&mut p, 0x2000) // (0,0): tile0, pal0, priority 1
+    ppuRegWrite(&mut p, 0x16, 0xA0)
+    ppuRegWrite(&mut p, 0x17, 0x00) // VMADDR = $00A0 (row 5 * 32)
+    vword(&mut p, 0x0000) // (0,5): tile0, pal0, priority 0
 
     // OAM: sprite0 at (0,0) priority 0; sprite1 at (0,40) priority 2.
-    ppuRegWrite(p, 0x02, 0x00)
-    ppuRegWrite(p, 0x03, 0x00)
-    ppuRegWrite(p, 0x04, 0) // s0 x
-    ppuRegWrite(p, 0x04, 0) // s0 y
-    ppuRegWrite(p, 0x04, 0) // s0 tile
-    ppuRegWrite(p, 0x04, 0x00) // s0 attr: priority 0
-    ppuRegWrite(p, 0x04, 0) // s1 x
-    ppuRegWrite(p, 0x04, 40) // s1 y
-    ppuRegWrite(p, 0x04, 0) // s1 tile
-    ppuRegWrite(p, 0x04, 0x20) // s1 attr: priority 2 (bits4-5 = 2)
+    ppuRegWrite(&mut p, 0x02, 0x00)
+    ppuRegWrite(&mut p, 0x03, 0x00)
+    ppuRegWrite(&mut p, 0x04, 0) // s0 x
+    ppuRegWrite(&mut p, 0x04, 0) // s0 y
+    ppuRegWrite(&mut p, 0x04, 0) // s0 tile
+    ppuRegWrite(&mut p, 0x04, 0x00) // s0 attr: priority 0
+    ppuRegWrite(&mut p, 0x04, 0) // s1 x
+    ppuRegWrite(&mut p, 0x04, 40) // s1 y
+    ppuRegWrite(&mut p, 0x04, 0) // s1 tile
+    ppuRegWrite(&mut p, 0x04, 0x20) // s1 attr: priority 2 (bits4-5 = 2)
 
     var fb: Vec<i64> = Vec.new()
     var i: i64 = 0
@@ -88,7 +88,7 @@ fn main(): i32 {
         fb.push(0)
         i = i + 1
     }
-    renderFrame(p, fb)
+    renderFrame(p, &mut fb)
 
     let a = fb[4 * 256 + 4] // spot A: BG prio1 vs sprite prio0
     let b = fb[44 * 256 + 4] // spot B: BG prio0 vs sprite prio2

@@ -258,7 +258,7 @@ fn renderTo(m: &mut Mem, fb: &mut Vec<i64>, path: &string, forceBright: bool): v
         fb[i] = 0
         i = i + 1
     }
-    renderFrame(m.ppu, fb)
+    renderFrame(m.ppu, &mut fb)
     writePpm(fb, path)
 }
 
@@ -343,7 +343,7 @@ fn probeLoop(cpu: &mut Cpu, m: &mut Mem, n: i64): void {
             pcs.push(full)
             cnts.push(1)
         }
-        step(cpu, m)
+        step(&mut cpu, &mut m)
         k = k + 1
     }
     print("== probe: " + n.toString() + " instrs, " + pcs.len.toString() + " distinct PCs ==")
@@ -479,7 +479,7 @@ fn main(): i32 {
     if statePath != "" {
         match readFile(statePath) {
             Result.Ok(data) => {
-                if loadState(cpu, m, data) {
+                if loadState(&mut cpu, &mut m, data) {
                     print("state loaded <- " + statePath)
                 } else {
                     print("state file invalid: " + statePath)
@@ -521,12 +521,12 @@ fn main(): i32 {
             pi = pi + 1
         }
         m.joy1 = j
-        stepFrame(cpu, m)
+        stepFrame(&mut cpu, &mut m)
         for s in shots {
             if s == f {
                 dumpRegs(m, f)
                 peekWram(m, peekAddrs)
-                renderTo(m, fb, outPrefix + "_f" + f.toString() + ".ppm", forceBright)
+                renderTo(&mut m, &mut fb, outPrefix + "_f" + f.toString() + ".ppm", forceBright)
             }
         }
         f = f + 1
@@ -544,7 +544,7 @@ fn main(): i32 {
             abuf.push(0)
             ai2 = ai2 + 1
         }
-        dspGenerate(m.apuMem, abuf, 535)
+        dspGenerate(&mut m.apuMem, &mut abuf, 535)
         var amin: i64 = 0
         var amax: i64 = 0
         var anz: i64 = 0
@@ -568,9 +568,9 @@ fn main(): i32 {
         print("!! UNIMPLEMENTED OPCODE $" + hex2(lastBadOp()) + " at $" + hex2((lastBadOpPc() >> 16) & 0xFF) + hex4(lastBadOpPc() & 0xFFFF) + " — CPU derailed here")
     }
     if doProbe {
-        probeLoop(cpu, m, 6000)
+        probeLoop(&mut cpu, &mut m, 6000)
     }
-    renderTo(m, fb, outPrefix + ".ppm", forceBright)
+    renderTo(&mut m, &mut fb, outPrefix + ".ppm", forceBright)
 
     if doLayers {
         // Isolate each layer by overriding TM/TS and re-rendering — reuses the
@@ -588,7 +588,7 @@ fn main(): i32 {
                 } else {
                     "_bg" + (bit + 1).toString()
                 }
-                renderTo(m, fb, outPrefix + suffix + ".ppm", forceBright)
+                renderTo(&mut m, &mut fb, outPrefix + suffix + ".ppm", forceBright)
             }
             bit = bit + 1
         }

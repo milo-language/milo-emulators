@@ -175,7 +175,7 @@ fn memWrite8(m: &mut Mem, addr: i64, val: i64) {
                 if za < 0x2000 {
                     m.z80.mem[za] = (val & 0xFF) as u8 // Z80 RAM
                 } else {
-                    z80DevWrite(m.z80, za, val & 0xFF) // YM2612 / bank / PSG (68k side)
+                    z80DevWrite(&mut m.z80, za, val & 0xFF) // YM2612 / bank / PSG (68k side)
                 }
             } else if a >= 0xA14000 && a <= 0xA14003 {
                 m.tmssUnlocked = true // 'SEGA' TMSS unlock bytes
@@ -212,12 +212,12 @@ fn memWrite16(m: &mut Mem, addr: i64, val: i64) {
             return // ROM is read-only
         }
         if isDevice(a) {
-            devWrite16(m, a, val & 0xFFFF)
+            devWrite16(&mut m, a, val & 0xFFFF)
             return
         }
     }
-    memWrite8(m, addr, (val >> 8) & 0xFF)
-    memWrite8(m, addr + 1, val & 0xFF)
+    memWrite8(&mut m, addr, (val >> 8) & 0xFF)
+    memWrite8(&mut m, addr + 1, val & 0xFF)
 }
 
 // Device address space: $A0xxxx (Z80/I/O/control) and $C0000x (VDP ports).
@@ -301,17 +301,17 @@ fn devWrite16(m: &mut Mem, a: i64, val: i64) {
             m.z80.mem[za] = ((val >> 8) & 0xFF) as u8
             m.z80.mem[(za + 1) & 0x1FFF] = (val & 0xFF) as u8
         } else {
-            z80DevWrite(m.z80, za, (val >> 8) & 0xFF)
-            z80DevWrite(m.z80, za + 1, val & 0xFF)
+            z80DevWrite(&mut m.z80, za, (val >> 8) & 0xFF)
+            z80DevWrite(&mut m.z80, za + 1, val & 0xFF)
         }
         return
     }
     if a == 0xC00000 || a == 0xC00002 {
-        vdpDataWrite(m, val)
+        vdpDataWrite(&mut m, val)
         return
     }
     if a == 0xC00004 || a == 0xC00006 {
-        vdpControlWrite(m, val)
+        vdpControlWrite(&mut m, val)
         return
     }
     if a == 0xA11100 {
@@ -350,7 +350,7 @@ fn vdpControlWrite(m: &mut Mem, val: i64) {
         m.vdpCode = ((first >> 14) & 0x3) | ((val >> 2) & 0x3C)
         // CD5 set => this control write triggers a DMA.
         if (m.vdpCode & 0x20) != 0 {
-            vdpDma(m)
+            vdpDma(&mut m)
         }
         return
     }
@@ -384,11 +384,11 @@ fn vdpDma(m: &mut Mem) {
         m.fillAddr = m.vdpAddr
         m.fillInc = m.vdpRegs[15]
         m.fillLen = flen
-        doFill(m, m.lastDataByte)
+        doFill(&mut m, m.lastDataByte)
         return
     }
     if mode == 3 {
-        vdpDmaCopy(m)
+        vdpDmaCopy(&mut m)
         return
     }
     var src = ((m.vdpRegs[23] & 0x7F) << 17) | (m.vdpRegs[22] << 9) | (m.vdpRegs[21] << 1)
@@ -400,7 +400,7 @@ fn vdpDma(m: &mut Mem) {
     while i < len {
         let a = src & 0xFFFFFF
         let w = ((m.ram[a] as i64) << 8) | (m.ram[(a + 1) & 0xFFFFFF] as i64)
-        vdpDataWrite(m, w)
+        vdpDataWrite(&mut m, w)
         src = (src + 2) & 0xFFFFFF
         i = i + 1
     }
@@ -444,7 +444,7 @@ fn vdpDmaCopy(m: &mut Mem) {
         } else {
             0
         }
-        vramPut(m, dst, sb)
+        vramPut(&mut m, dst, sb)
         src = (src + 1) & 0xFFFF
         dst = (dst + m.vdpRegs[15]) & 0xFFFF
         i = i + 1
@@ -462,7 +462,7 @@ fn doFill(m: &mut Mem, fillByteIn: i64) {
     var da = m.fillAddr
     var i: i64 = 0
     while i < len {
-        vramPut(m, da, fillByte)
+        vramPut(&mut m, da, fillByte)
         da = (da + inc) & 0x1FFFF
         i = i + 1
     }
@@ -482,11 +482,11 @@ fn vdpDataWrite(m: &mut Mem, val: i64) {
         let hi = ((val >> 8) & 0xFF) as u8
         let lo = (val & 0xFF) as u8
         if (a & 1) == 0 {
-            vramPut(m, base, hi)
-            vramPut(m, base + 1, lo)
+            vramPut(&mut m, base, hi)
+            vramPut(&mut m, base + 1, lo)
         } else {
-            vramPut(m, base, lo)
-            vramPut(m, base + 1, hi)
+            vramPut(&mut m, base, lo)
+            vramPut(&mut m, base + 1, hi)
         }
     } else if target == 3 {
         let idx = (a >> 1) & 0x3F
@@ -503,8 +503,8 @@ fn memRead32(m: &Mem, addr: i64): i64 {
 }
 
 fn memWrite32(m: &mut Mem, addr: i64, val: i64) {
-    memWrite16(m, addr, (val >> 16) & 0xFFFF)
-    memWrite16(m, addr + 2, val & 0xFFFF)
+    memWrite16(&mut m, addr, (val >> 16) & 0xFFFF)
+    memWrite16(&mut m, addr + 2, val & 0xFFFF)
 }
 
 pub struct M68k {
@@ -631,8 +631,8 @@ fn fetch16(cpu: &mut M68k, m: &Mem): i64 {
 }
 
 fn fetch32(cpu: &mut M68k, m: &Mem): i64 {
-    let hi = fetch16(cpu, m)
-    let lo = fetch16(cpu, m)
+    let hi = fetch16(&mut cpu, m)
+    let lo = fetch16(&mut cpu, m)
     return (hi << 16) | lo
 }
 
@@ -691,38 +691,38 @@ fn resolveEa(cpu: &mut M68k, m: &Mem, mode: i64, reg: i64, size: i64): Ea {
         return Ea.MemAddr(cpu.a[reg] & 0xFFFFFFFF)
     }
     if mode == 5 {
-        let d16 = signExtend(fetch16(cpu, m), 1)
+        let d16 = signExtend(fetch16(&mut cpu, m), 1)
         return Ea.MemAddr((cpu.a[reg] + d16) & 0xFFFFFFFF)
     }
     if mode == 6 {
         let base = cpu.a[reg]
-        let ext = fetch16(cpu, m)
+        let ext = fetch16(&mut cpu, m)
         let disp = signExtend(ext & 0xFF, 0)
         return Ea.MemAddr((base + disp + briefIndex(cpu, ext)) & 0xFFFFFFFF)
     }
     // mode == 7: reg selects the sub-mode
     if reg == 0 {
-        return Ea.MemAddr(signExtend(fetch16(cpu, m), 1) & 0xFFFFFFFF)
+        return Ea.MemAddr(signExtend(fetch16(&mut cpu, m), 1) & 0xFFFFFFFF)
     }
     if reg == 1 {
-        return Ea.MemAddr(fetch32(cpu, m) & 0xFFFFFFFF)
+        return Ea.MemAddr(fetch32(&mut cpu, m) & 0xFFFFFFFF)
     }
     if reg == 2 {
         let base = cpu.pc // PC-relative base = address of the extension word
-        let d16 = signExtend(fetch16(cpu, m), 1)
+        let d16 = signExtend(fetch16(&mut cpu, m), 1)
         return Ea.MemAddr((base + d16) & 0xFFFFFFFF)
     }
     if reg == 3 {
         let base = cpu.pc
-        let ext = fetch16(cpu, m)
+        let ext = fetch16(&mut cpu, m)
         let disp = signExtend(ext & 0xFF, 0)
         return Ea.MemAddr((base + disp + briefIndex(cpu, ext)) & 0xFFFFFFFF)
     }
     // reg == 4: immediate
     if size == 2 {
-        return Ea.Imm(fetch32(cpu, m))
+        return Ea.Imm(fetch32(&mut cpu, m))
     }
-    return Ea.Imm(fetch16(cpu, m) & sizeMask(size))
+    return Ea.Imm(fetch16(&mut cpu, m) & sizeMask(size))
 }
 
 fn eaLoad(cpu: &mut M68k, m: &Mem, ea: &Ea, size: i64): i64 {
@@ -734,7 +734,7 @@ fn eaLoad(cpu: &mut M68k, m: &Mem, ea: &Ea, size: i64): i64 {
             return signExtend(cpu.a[n], size) & sizeMask(size)
         }
         Ea.MemAddr(addr) => {
-            if checkAlign(cpu, addr, size, true, false) {
+            if checkAlign(&mut cpu, addr, size, true, false) {
                 return 0
             }
             if size == 0 {
@@ -754,21 +754,21 @@ fn eaLoad(cpu: &mut M68k, m: &Mem, ea: &Ea, size: i64): i64 {
 fn eaStore(cpu: &mut M68k, m: &mut Mem, ea: &Ea, size: i64, val: i64) {
     match ea {
         Ea.DReg(n) => {
-            setD(cpu, n, size, val)
+            setD(&mut cpu, n, size, val)
         }
         Ea.AReg(n) => {
-            setA(cpu, n, size, val)
+            setA(&mut cpu, n, size, val)
         }
         Ea.MemAddr(addr) => {
-            if checkAlign(cpu, addr, size, false, false) {
+            if checkAlign(&mut cpu, addr, size, false, false) {
                 return
             }
             if size == 0 {
-                memWrite8(m, addr, val)
+                memWrite8(&mut m, addr, val)
             } else if size == 1 {
-                memWrite16(m, addr, val)
+                memWrite16(&mut m, addr, val)
             } else {
-                memWrite32(m, addr, val)
+                memWrite32(&mut m, addr, val)
             }
         }
         Ea.Imm(v) => {
@@ -793,15 +793,15 @@ fn getBit(cpu: &M68k, bit: i64): bool {
 // N and Z from a result; caller sets V/C/X per operation.
 fn setNZ(cpu: &mut M68k, size: i64, res: i64) {
     let r = res & sizeMask(size)
-    setBit(cpu, SR_N, (r & sizeMsb(size)) != 0)
-    setBit(cpu, SR_Z, r == 0)
+    setBit(&mut cpu, SR_N, (r & sizeMsb(size)) != 0)
+    setBit(&mut cpu, SR_Z, r == 0)
 }
 
 // logical / move: N,Z from result, V=C=0, X untouched.
 fn setLogicalFlags(cpu: &mut M68k, size: i64, res: i64) {
-    setNZ(cpu, size, res)
-    setBit(cpu, SR_V, false)
-    setBit(cpu, SR_C, false)
+    setNZ(&mut cpu, size, res)
+    setBit(&mut cpu, SR_V, false)
+    setBit(&mut cpu, SR_C, false)
 }
 
 fn addFlags(cpu: &mut M68k, size: i64, a: i64, b: i64, res: i64, withX: bool) {
@@ -812,11 +812,11 @@ fn addFlags(cpu: &mut M68k, size: i64, a: i64, b: i64, res: i64, withX: bool) {
     let r = res & mask
     let carry = (ua + ub) > mask
     let overflow = ((~(a ^ b)) & (a ^ res) & msb) != 0
-    setNZ(cpu, size, r)
-    setBit(cpu, SR_V, overflow)
-    setBit(cpu, SR_C, carry)
+    setNZ(&mut cpu, size, r)
+    setBit(&mut cpu, SR_V, overflow)
+    setBit(&mut cpu, SR_C, carry)
     if withX {
-        setBit(cpu, SR_X, carry)
+        setBit(&mut cpu, SR_X, carry)
     }
 }
 
@@ -829,11 +829,11 @@ fn subFlags(cpu: &mut M68k, size: i64, a: i64, b: i64, res: i64, withX: bool) {
     let r = res & mask
     let borrow = ub > ua
     let overflow = ((a ^ b) & (a ^ res) & msb) != 0
-    setNZ(cpu, size, r)
-    setBit(cpu, SR_V, overflow)
-    setBit(cpu, SR_C, borrow)
+    setNZ(&mut cpu, size, r)
+    setBit(&mut cpu, SR_V, overflow)
+    setBit(&mut cpu, SR_C, borrow)
     if withX {
-        setBit(cpu, SR_X, borrow)
+        setBit(&mut cpu, SR_X, borrow)
     }
 }
 
@@ -894,12 +894,12 @@ fn testCond(cpu: &M68k, cond: i64): bool {
 // --- stack helpers (push/pop long, active SP = a[7]) ---
 fn pushLong(cpu: &mut M68k, m: &mut Mem, val: i64) {
     cpu.a[7] = (cpu.a[7] - 4) & 0xFFFFFFFF
-    memWrite32(m, cpu.a[7], val)
+    memWrite32(&mut m, cpu.a[7], val)
 }
 
 fn pushWord(cpu: &mut M68k, m: &mut Mem, val: i64) {
     cpu.a[7] = (cpu.a[7] - 2) & 0xFFFFFFFF
-    memWrite16(m, cpu.a[7], val & 0xFFFF)
+    memWrite16(&mut m, cpu.a[7], val & 0xFFFF)
 }
 
 // Raise a group-0 address/bus error (vector 3). Switches to supervisor and
@@ -941,11 +941,11 @@ fn raiseAddressError(cpu: &mut M68k, m: &mut Mem, ir: i64) {
     let faultPc = cpu.pc
     // clear the latch before the frame writes (they are aligned by construction)
     cpu.fault = false
-    pushLong(cpu, m, faultPc)
-    pushWord(cpu, m, oldSr)
-    pushWord(cpu, m, ir)
-    pushLong(cpu, m, cpu.faultAddr)
-    pushWord(cpu, m, ssw)
+    pushLong(&mut cpu, &mut m, faultPc)
+    pushWord(&mut cpu, &mut m, oldSr)
+    pushWord(&mut cpu, &mut m, ir)
+    pushLong(&mut cpu, &mut m, cpu.faultAddr)
+    pushWord(&mut cpu, &mut m, ssw)
     cpu.pc = memRead32(m, 3 * 4) & 0xFFFFFFFF
 }
 
@@ -967,7 +967,7 @@ fn popWord(cpu: &mut M68k, m: &Mem): i64 {
 fn privViolation(cpu: &mut M68k, m: &mut Mem): bool {
     if (cpu.sr & SR_S) == 0 {
         cpu.pc = (cpu.pc - 2) & 0xFFFFFFFF
-        raiseException(cpu, m, 8)
+        raiseException(&mut cpu, &mut m, 8)
         return true
     }
     return false
@@ -1004,8 +1004,8 @@ pub fn deliverInterrupt(cpu: &mut M68k, m: &mut Mem, level: i64): bool {
         cpu.otherSp = tmp
     }
     cpu.halted = false
-    pushLong(cpu, m, cpu.pc)
-    pushWord(cpu, m, oldSr)
+    pushLong(&mut cpu, &mut m, cpu.pc)
+    pushWord(&mut cpu, &mut m, oldSr)
     cpu.pc = memRead32(m, (24 + level) * 4) & 0xFFFFFFFF
     return true
 }
@@ -1022,8 +1022,8 @@ fn raiseException(cpu: &mut M68k, m: &mut Mem, vec: i64) {
         cpu.a[7] = cpu.otherSp
         cpu.otherSp = tmp
     }
-    pushLong(cpu, m, cpu.pc)
-    pushWord(cpu, m, oldSr)
+    pushLong(&mut cpu, &mut m, cpu.pc)
+    pushWord(&mut cpu, &mut m, oldSr)
     cpu.pc = memRead32(m, vec * 4) & 0xFFFFFFFF
 }
 
@@ -1053,7 +1053,7 @@ pub fn step(cpu: &mut M68k, m: &mut Mem): bool {
         cpu.faultAddr = cpu.pc & 0xFFFFFFFF
         cpu.faultRW = true
         cpu.faultIN = true
-        raiseAddressError(cpu, m, memRead16(m, cpu.pc & ~1))
+        raiseAddressError(&mut cpu, &mut m, memRead16(m, cpu.pc & ~1))
         return true
     }
     // Snapshot data registers + SR: on an address error the faulting instruction
@@ -1067,8 +1067,8 @@ pub fn step(cpu: &mut M68k, m: &mut Mem): bool {
         si = si + 1
     }
     let savedSr = cpu.sr
-    let op = fetch16(cpu, m)
-    let ran = decode(cpu, m, op)
+    let op = fetch16(&mut cpu, m)
+    let ran = decode(&mut cpu, &mut m, op)
     // An address error latched during EA access aborts the instruction and
     // raises the group-0 exception, with the opcode as the frame's IR.
     if cpu.fault {
@@ -1080,7 +1080,7 @@ pub fn step(cpu: &mut M68k, m: &mut Mem): bool {
             }
             cpu.sr = savedSr
         }
-        raiseAddressError(cpu, m, op)
+        raiseAddressError(&mut cpu, &mut m, op)
         return true
     }
     return ran
@@ -1090,54 +1090,54 @@ fn decode(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
     let top = (op >> 12) & 0xF
 
     if top == 0x1 {
-        return execMove(cpu, m, op, 0)
+        return execMove(&mut cpu, &mut m, op, 0)
     }
     if top == 0x3 {
-        return execMove(cpu, m, op, 1)
+        return execMove(&mut cpu, &mut m, op, 1)
     }
     if top == 0x2 {
-        return execMove(cpu, m, op, 2)
+        return execMove(&mut cpu, &mut m, op, 2)
     }
     if top == 0x7 {
         // MOVEQ: bit 8 must be 0
         if (op & 0x0100) == 0 {
             let reg = (op >> 9) & 0x7
             let val = signExtend(op & 0xFF, 0)
-            setD(cpu, reg, 2, val & 0xFFFFFFFF)
-            setLogicalFlags(cpu, 2, val)
+            setD(&mut cpu, reg, 2, val & 0xFFFFFFFF)
+            setLogicalFlags(&mut cpu, 2, val)
             return true
         }
         return false
     }
     if top == 0x6 {
-        return execBranch(cpu, m, op)
+        return execBranch(&mut cpu, &mut m, op)
     }
     if top == 0x5 {
-        return execAddqSubq(cpu, m, op)
+        return execAddqSubq(&mut cpu, &mut m, op)
     }
     if top == 0xD {
-        return execAddSub(cpu, m, op, true)
+        return execAddSub(&mut cpu, &mut m, op, true)
     }
     if top == 0x9 {
-        return execAddSub(cpu, m, op, false)
+        return execAddSub(&mut cpu, &mut m, op, false)
     }
     if top == 0xB {
-        return execCmpEor(cpu, m, op)
+        return execCmpEor(&mut cpu, &mut m, op)
     }
     if top == 0xC {
-        return execAnd(cpu, m, op)
+        return execAnd(&mut cpu, &mut m, op)
     }
     if top == 0x8 {
-        return execOr(cpu, m, op)
+        return execOr(&mut cpu, &mut m, op)
     }
     if top == 0x4 {
-        return execMisc(cpu, m, op)
+        return execMisc(&mut cpu, &mut m, op)
     }
     if top == 0xE {
-        return execShift(cpu, m, op)
+        return execShift(&mut cpu, &mut m, op)
     }
     if top == 0x0 {
-        return execImmediate(cpu, m, op)
+        return execImmediate(&mut cpu, &mut m, op)
     }
     return false
 }
@@ -1203,19 +1203,19 @@ fn doShift(cpu: &mut M68k, val: i64, size: i64, cnt: i64, sty: i64, left: bool):
         }
         i = i + 1
     }
-    setNZ(cpu, size, v)
-    setBit(cpu, SR_V, sty == 0 && left && overflow)
+    setNZ(&mut cpu, size, v)
+    setBit(&mut cpu, SR_V, sty == 0 && left && overflow)
     if cnt == 0 {
         // no shift: C cleared, except ROX where C follows X; X and (rotate) untouched
         if sty == 2 {
-            setBit(cpu, SR_C, getBit(cpu, SR_X))
+            setBit(&mut cpu, SR_C, getBit(cpu, SR_X))
         } else {
-            setBit(cpu, SR_C, false)
+            setBit(&mut cpu, SR_C, false)
         }
     } else {
-        setBit(cpu, SR_C, carry)
+        setBit(&mut cpu, SR_C, carry)
         if sty != 3 {
-            setBit(cpu, SR_X, xf) // AS/LS/ROX update X; RO leaves it
+            setBit(&mut cpu, SR_X, xf) // AS/LS/ROX update X; RO leaves it
         }
     }
     return v
@@ -1230,10 +1230,10 @@ fn execShift(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
         let sty = (op >> 9) & 0x3
         let mode = (op >> 3) & 0x7
         let reg = op & 0x7
-        let ea = resolveEa(cpu, m, mode, reg, 1)
-        let v = eaLoad(cpu, m, ea, 1)
-        let r = doShift(cpu, v, 1, 1, sty, left)
-        eaStore(cpu, m, ea, 1, r)
+        let ea = resolveEa(&mut cpu, m, mode, reg, 1)
+        let v = eaLoad(&mut cpu, m, ea, 1)
+        let r = doShift(&mut cpu, v, 1, 1, sty, left)
+        eaStore(&mut cpu, &mut m, ea, 1, r)
         return true
     }
     let size = (op >> 6) & 0x3
@@ -1249,8 +1249,8 @@ fn execShift(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
         cnt = getD(cpu, (op >> 9) & 0x7, 2) & 63 // register count mod 64
     }
     let v = getD(cpu, reg, size)
-    let r = doShift(cpu, v, size, cnt, sty, left)
-    setD(cpu, reg, size, r)
+    let r = doShift(&mut cpu, v, size, cnt, sty, left)
+    setD(&mut cpu, reg, size, r)
     return true
 }
 
@@ -1261,13 +1261,13 @@ fn execImmediate(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
     // dynamic-bit-op encoding (bit 8 set) but is disambiguated by mode field 001,
     // which is illegal for bit ops, so it must be intercepted before them.
     if (op & 0xF138) == 0x0108 {
-        return execMovep(cpu, m, op)
+        return execMovep(&mut cpu, &mut m, op)
     }
     // Bit ops: dynamic (Dn source) have bit 8 set; static (immediate) are 0000 1000.
     let dynamicBit = (op & 0x0100) != 0
     let staticBit = (op & 0xFF00) == 0x0800
     if dynamicBit || staticBit {
-        return execBitOp(cpu, m, op, staticBit)
+        return execBitOp(&mut cpu, &mut m, op, staticBit)
     }
 
     let which = (op >> 9) & 0x7 // 0 ORI,1 ANDI,2 SUBI,3 ADDI,5 EORI,6 CMPI
@@ -1280,7 +1280,7 @@ fn execImmediate(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
 
     // ...toCCR (mode 7 reg 4, size byte) / ...toSR (size word) for ORI/ANDI/EORI
     if mode == 7 && reg == 4 && (which == 0 || which == 1 || which == 5) {
-        let imm = fetch16(cpu, m)
+        let imm = fetch16(&mut cpu, m)
         if size == 0 {
             let ccr = cpu.sr & 0x1F
             let r = applyLogic(which, ccr, imm & 0x1F) & 0x1F
@@ -1302,31 +1302,31 @@ fn execImmediate(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
     }
 
     let imm: i64 = if size == 2 {
-        fetch32(cpu, m)
+        fetch32(&mut cpu, m)
     } else {
-        fetch16(cpu, m) & sizeMask(size)
+        fetch16(&mut cpu, m) & sizeMask(size)
     }
-    let ea = resolveEa(cpu, m, mode, reg, size)
-    let cur = eaLoad(cpu, m, ea, size)
+    let ea = resolveEa(&mut cpu, m, mode, reg, size)
+    let cur = eaLoad(&mut cpu, m, ea, size)
     if which == 2 {
         // SUBI
         let res = (cur - imm) & sizeMask(size)
-        subFlags(cpu, size, cur, imm, res, true)
-        eaStore(cpu, m, ea, size, res)
+        subFlags(&mut cpu, size, cur, imm, res, true)
+        eaStore(&mut cpu, &mut m, ea, size, res)
     } else if which == 3 {
         // ADDI
         let res = (cur + imm) & sizeMask(size)
-        addFlags(cpu, size, cur, imm, res, true)
-        eaStore(cpu, m, ea, size, res)
+        addFlags(&mut cpu, size, cur, imm, res, true)
+        eaStore(&mut cpu, &mut m, ea, size, res)
     } else if which == 6 {
         // CMPI — compare only, no writeback, X untouched
         let res = (cur - imm) & sizeMask(size)
-        subFlags(cpu, size, cur, imm, res, false)
+        subFlags(&mut cpu, size, cur, imm, res, false)
     } else {
         // ORI / ANDI / EORI
         let res = applyLogic(which, cur, imm) & sizeMask(size)
-        eaStore(cpu, m, ea, size, res)
-        setLogicalFlags(cpu, size, res)
+        eaStore(&mut cpu, &mut m, ea, size, res)
+        setLogicalFlags(&mut cpu, size, res)
     }
     return true
 }
@@ -1339,20 +1339,20 @@ fn execMovep(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
     let dreg = (op >> 9) & 0x7
     let areg = op & 0x7
     let opmode = (op >> 6) & 0x7
-    let disp = signExtend(fetch16(cpu, m), 1)
+    let disp = signExtend(fetch16(&mut cpu, m), 1)
     let addr = (cpu.a[areg] + disp) & 0xFFFFFFFF
     let isLong = (opmode & 0x1) != 0
     let toMem = (opmode & 0x2) != 0
     if toMem {
         let d = cpu.d[dreg] & 0xFFFFFFFF
         if isLong {
-            memWrite8(m, addr, (d >> 24) & 0xFF)
-            memWrite8(m, (addr + 2) & 0xFFFFFFFF, (d >> 16) & 0xFF)
-            memWrite8(m, (addr + 4) & 0xFFFFFFFF, (d >> 8) & 0xFF)
-            memWrite8(m, (addr + 6) & 0xFFFFFFFF, d & 0xFF)
+            memWrite8(&mut m, addr, (d >> 24) & 0xFF)
+            memWrite8(&mut m, (addr + 2) & 0xFFFFFFFF, (d >> 16) & 0xFF)
+            memWrite8(&mut m, (addr + 4) & 0xFFFFFFFF, (d >> 8) & 0xFF)
+            memWrite8(&mut m, (addr + 6) & 0xFFFFFFFF, d & 0xFF)
         } else {
-            memWrite8(m, addr, (d >> 8) & 0xFF)
-            memWrite8(m, (addr + 2) & 0xFFFFFFFF, d & 0xFF)
+            memWrite8(&mut m, addr, (d >> 8) & 0xFF)
+            memWrite8(&mut m, (addr + 2) & 0xFFFFFFFF, d & 0xFF)
         }
     } else {
         if isLong {
@@ -1360,7 +1360,7 @@ fn execMovep(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
             cpu.d[dreg] = v
         } else {
             let v = ((memRead8(m, addr) << 8) | memRead8(m, (addr + 2) & 0xFFFFFFFF)) & 0xFFFF
-            setD(cpu, dreg, 1, v)
+            setD(&mut cpu, dreg, 1, v)
         }
     }
     return true
@@ -1383,7 +1383,7 @@ fn execBitOp(cpu: &mut M68k, m: &mut Mem, op: i64, isStatic: bool): bool {
     let reg = op & 0x7
     var bitNum: i64 = 0
     if isStatic {
-        bitNum = fetch16(cpu, m) & 0xFF
+        bitNum = fetch16(&mut cpu, m) & 0xFF
     } else {
         bitNum = getD(cpu, (op >> 9) & 0x7, 2) & 0xFF
     }
@@ -1393,7 +1393,7 @@ fn execBitOp(cpu: &mut M68k, m: &mut Mem, op: i64, isStatic: bool): bool {
         let b = bitNum & 31
         let v = cpu.d[reg] & 0xFFFFFFFF
         let bit = (v >> b) & 1
-        setBit(cpu, SR_Z, bit == 0)
+        setBit(&mut cpu, SR_Z, bit == 0)
         if opType == 1 {
             cpu.d[reg] = v ^ (1 << b)
         } else if opType == 2 {
@@ -1405,16 +1405,16 @@ fn execBitOp(cpu: &mut M68k, m: &mut Mem, op: i64, isStatic: bool): bool {
     }
     // memory: byte, bit mod 8
     let b = bitNum & 7
-    let ea = resolveEa(cpu, m, mode, reg, 0)
-    let v = eaLoad(cpu, m, ea, 0)
+    let ea = resolveEa(&mut cpu, m, mode, reg, 0)
+    let v = eaLoad(&mut cpu, m, ea, 0)
     let bit = (v >> b) & 1
-    setBit(cpu, SR_Z, bit == 0)
+    setBit(&mut cpu, SR_Z, bit == 0)
     if opType == 1 {
-        eaStore(cpu, m, ea, 0, v ^ (1 << b))
+        eaStore(&mut cpu, &mut m, ea, 0, v ^ (1 << b))
     } else if opType == 2 {
-        eaStore(cpu, m, ea, 0, v & ~(1 << b))
+        eaStore(&mut cpu, &mut m, ea, 0, v & ~(1 << b))
     } else if opType == 3 {
-        eaStore(cpu, m, ea, 0, v | (1 << b))
+        eaStore(&mut cpu, &mut m, ea, 0, v | (1 << b))
     }
     return true
 }
@@ -1426,17 +1426,17 @@ fn execMove(cpu: &mut M68k, m: &mut Mem, op: i64, size: i64): bool {
     let dstMode = (op >> 6) & 0x7
     let dstReg = (op >> 9) & 0x7
 
-    let srcEa = resolveEa(cpu, m, srcMode, srcReg, size)
-    let val = eaLoad(cpu, m, srcEa, size)
+    let srcEa = resolveEa(&mut cpu, m, srcMode, srcReg, size)
+    let val = eaLoad(&mut cpu, m, srcEa, size)
 
     if dstMode == 1 {
         // MOVEA: sign-extend to 32 bits, no flag change (byte size illegal, ignore)
-        setA(cpu, dstReg, size, signExtend(val, size))
+        setA(&mut cpu, dstReg, size, signExtend(val, size))
         return true
     }
-    let dstEa = resolveEa(cpu, m, dstMode, dstReg, size)
-    eaStore(cpu, m, dstEa, size, val)
-    setLogicalFlags(cpu, size, val)
+    let dstEa = resolveEa(&mut cpu, m, dstMode, dstReg, size)
+    eaStore(&mut cpu, &mut m, dstEa, size, val)
+    setLogicalFlags(&mut cpu, size, val)
     return true
 }
 
@@ -1446,22 +1446,22 @@ fn execBranch(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
     let base = cpu.pc // address of the word after the opcode
     var disp = signExtend(disp8, 0)
     if disp8 == 0 {
-        disp = signExtend(fetch16(cpu, m), 1)
+        disp = signExtend(fetch16(&mut cpu, m), 1)
     }
     let target = (base + disp) & 0xFFFFFFFF
     if cond == 1 {
         // BSR
-        pushLong(cpu, m, cpu.pc)
-        setPc(cpu, target)
+        pushLong(&mut cpu, &mut m, cpu.pc)
+        setPc(&mut cpu, target)
         return true
     }
     if cond == 0 {
         // BRA
-        setPc(cpu, target)
+        setPc(&mut cpu, target)
         return true
     }
     if testCond(cpu, cond) {
-        setPc(cpu, target)
+        setPc(&mut cpu, target)
     }
     return true
 }
@@ -1478,25 +1478,25 @@ fn execAddqSubq(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
             // DBcc Dn — the displacement word is ALWAYS consumed, even when the
             // condition is true (branch not taken, counter untouched, pc advances).
             let base = cpu.pc // displacement is relative to the ext-word address
-            let disp = signExtend(fetch16(cpu, m), 1)
+            let disp = signExtend(fetch16(&mut cpu, m), 1)
             if testCond(cpu, cond) {
                 return true
             }
             let cnt = (getD(cpu, reg, 1) - 1) & 0xFFFF
-            setD(cpu, reg, 1, cnt)
+            setD(&mut cpu, reg, 1, cnt)
             if cnt != 0xFFFF {
-                setPc(cpu, base + disp)
+                setPc(&mut cpu, base + disp)
             }
             return true
         }
         // Scc: set byte to FF/00
-        let ea = resolveEa(cpu, m, mode, reg, 0)
+        let ea = resolveEa(&mut cpu, m, mode, reg, 0)
         let v: i64 = if testCond(cpu, cond) {
             0xFF
         } else {
             0x00
         }
-        eaStore(cpu, m, ea, 0, v)
+        eaStore(&mut cpu, &mut m, ea, 0, v)
         return true
     }
     var data = (op >> 9) & 0x7
@@ -1504,7 +1504,7 @@ fn execAddqSubq(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
         data = 8
     }
     let isSub = (op & 0x0100) != 0
-    let ea = resolveEa(cpu, m, mode, reg, size)
+    let ea = resolveEa(&mut cpu, m, mode, reg, size)
     // ADDQ/SUBQ on An affects the whole 32-bit reg and sets NO flags.
     if mode == 1 {
         let cur = cpu.a[reg]
@@ -1516,15 +1516,15 @@ fn execAddqSubq(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
         cpu.a[reg] = res & 0xFFFFFFFF
         return true
     }
-    let cur = eaLoad(cpu, m, ea, size)
+    let cur = eaLoad(&mut cpu, m, ea, size)
     if isSub {
         let res = (cur - data) & sizeMask(size)
-        subFlags(cpu, size, cur, data, res, true)
-        eaStore(cpu, m, ea, size, res)
+        subFlags(&mut cpu, size, cur, data, res, true)
+        eaStore(&mut cpu, &mut m, ea, size, res)
     } else {
         let res = (cur + data) & sizeMask(size)
-        addFlags(cpu, size, cur, data, res, true)
-        eaStore(cpu, m, ea, size, res)
+        addFlags(&mut cpu, size, cur, data, res, true)
+        eaStore(&mut cpu, &mut m, ea, size, res)
     }
     return true
 }
@@ -1586,17 +1586,17 @@ fn execAddSubX(cpu: &mut M68k, m: &mut Mem, op: i64, isAdd: bool, size: i64) {
         carry = (ub + x) > ua
         overflow = ((a ^ b) & (a ^ res) & msb) != 0
     }
-    setBit(cpu, SR_N, (res & msb) != 0)
-    setBit(cpu, SR_V, overflow)
-    setBit(cpu, SR_C, carry)
-    setBit(cpu, SR_X, carry)
+    setBit(&mut cpu, SR_N, (res & msb) != 0)
+    setBit(&mut cpu, SR_V, overflow)
+    setBit(&mut cpu, SR_C, carry)
+    setBit(&mut cpu, SR_X, carry)
     if res != 0 {
-        setBit(cpu, SR_Z, false) // sticky: only clear, never set
+        setBit(&mut cpu, SR_Z, false) // sticky: only clear, never set
     }
     if mem {
-        writeSized(m, addr, size, res)
+        writeSized(&mut m, addr, size, res)
     } else {
-        setD(cpu, rx, size, res)
+        setD(&mut cpu, rx, size, res)
     }
 }
 
@@ -1642,12 +1642,12 @@ fn bcdAdd(cpu: &mut M68k, srcB: i64, dstB: i64): i64 {
     res = res & 0xFFFFFFFF
     v = v & res // undefined-V behavior, matched to real HW (Musashi)
     let res8 = res & 0xFF
-    setBit(cpu, SR_N, (res & 0x80) != 0)
-    setBit(cpu, SR_V, (v & 0x80) != 0)
-    setBit(cpu, SR_C, c)
-    setBit(cpu, SR_X, c)
+    setBit(&mut cpu, SR_N, (res & 0x80) != 0)
+    setBit(&mut cpu, SR_V, (v & 0x80) != 0)
+    setBit(&mut cpu, SR_C, c)
+    setBit(&mut cpu, SR_X, c)
     if res8 != 0 {
-        setBit(cpu, SR_Z, false)
+        setBit(&mut cpu, SR_Z, false)
     }
     return res8
 }
@@ -1670,12 +1670,12 @@ fn bcdSub(cpu: &mut M68k, srcB: i64, dstB: i64): i64 {
     }
     v = v & res // undefined-V behavior, matched to real HW (Musashi)
     let res8 = res & 0xFF
-    setBit(cpu, SR_N, (res & 0x80) != 0)
-    setBit(cpu, SR_V, (v & 0x80) != 0)
-    setBit(cpu, SR_C, c)
-    setBit(cpu, SR_X, c)
+    setBit(&mut cpu, SR_N, (res & 0x80) != 0)
+    setBit(&mut cpu, SR_V, (v & 0x80) != 0)
+    setBit(&mut cpu, SR_C, c)
+    setBit(&mut cpu, SR_X, c)
     if res8 != 0 {
-        setBit(cpu, SR_Z, false)
+        setBit(&mut cpu, SR_Z, false)
     }
     return res8
 }
@@ -1710,14 +1710,14 @@ fn execBcdRM(cpu: &mut M68k, m: &mut Mem, op: i64, isSub: bool) {
         dstB = cpu.d[rx] & 0xFF
     }
     let res = if isSub {
-        bcdSub(cpu, srcB, dstB)
+        bcdSub(&mut cpu, srcB, dstB)
     } else {
-        bcdAdd(cpu, srcB, dstB)
+        bcdAdd(&mut cpu, srcB, dstB)
     }
     if mem {
-        memWrite8(m, addr, res)
+        memWrite8(&mut m, addr, res)
     } else {
-        setD(cpu, rx, 0, res)
+        setD(&mut cpu, rx, 0, res)
     }
 }
 
@@ -1733,11 +1733,11 @@ fn readSized(m: &Mem, addr: i64, size: i64): i64 {
 
 fn writeSized(m: &mut Mem, addr: i64, size: i64, val: i64) {
     if size == 0 {
-        memWrite8(m, addr, val)
+        memWrite8(&mut m, addr, val)
     } else if size == 1 {
-        memWrite16(m, addr, val)
+        memWrite16(&mut m, addr, val)
     } else {
-        memWrite32(m, addr, val)
+        memWrite32(&mut m, addr, val)
     }
 }
 
@@ -1755,8 +1755,8 @@ fn execAddSub(cpu: &mut M68k, m: &mut Mem, op: i64, isAdd: bool): bool {
         } else {
             2
         }
-        let ea = resolveEa(cpu, m, mode, reg, size)
-        let src = signExtend(eaLoad(cpu, m, ea, size), size)
+        let ea = resolveEa(&mut cpu, m, mode, reg, size)
+        let src = signExtend(eaLoad(&mut cpu, m, ea, size), size)
         let cur = cpu.a[dn]
         let res = if isAdd {
             cur + src
@@ -1772,35 +1772,35 @@ fn execAddSub(cpu: &mut M68k, m: &mut Mem, op: i64, isAdd: bool): bool {
     // <ea> op Dn with an <ea> of a data reg (0) or addr reg (1) is illegal for
     // ADD/SUB — that encoding is ADDX/SUBX.
     if toEa && (mode == 0 || mode == 1) {
-        execAddSubX(cpu, m, op, isAdd, size)
+        execAddSubX(&mut cpu, &mut m, op, isAdd, size)
         return true
     }
-    let ea = resolveEa(cpu, m, mode, reg, size)
+    let ea = resolveEa(&mut cpu, m, mode, reg, size)
     if toEa {
         // <ea> = <ea> op Dn
-        let a = eaLoad(cpu, m, ea, size)
+        let a = eaLoad(&mut cpu, m, ea, size)
         let b = getD(cpu, dn, size)
         if isAdd {
             let res = (a + b) & sizeMask(size)
-            addFlags(cpu, size, a, b, res, true)
-            eaStore(cpu, m, ea, size, res)
+            addFlags(&mut cpu, size, a, b, res, true)
+            eaStore(&mut cpu, &mut m, ea, size, res)
         } else {
             let res = (a - b) & sizeMask(size)
-            subFlags(cpu, size, a, b, res, true)
-            eaStore(cpu, m, ea, size, res)
+            subFlags(&mut cpu, size, a, b, res, true)
+            eaStore(&mut cpu, &mut m, ea, size, res)
         }
     } else {
         // Dn = Dn op <ea>
         let a = getD(cpu, dn, size)
-        let b = eaLoad(cpu, m, ea, size)
+        let b = eaLoad(&mut cpu, m, ea, size)
         if isAdd {
             let res = (a + b) & sizeMask(size)
-            addFlags(cpu, size, a, b, res, true)
-            setD(cpu, dn, size, res)
+            addFlags(&mut cpu, size, a, b, res, true)
+            setD(&mut cpu, dn, size, res)
         } else {
             let res = (a - b) & sizeMask(size)
-            subFlags(cpu, size, a, b, res, true)
-            setD(cpu, dn, size, res)
+            subFlags(&mut cpu, size, a, b, res, true)
+            setD(&mut cpu, dn, size, res)
         }
     }
     return true
@@ -1820,40 +1820,40 @@ fn execCmpEor(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
         } else {
             2
         }
-        let ea = resolveEa(cpu, m, mode, reg, size)
-        let src = signExtend(eaLoad(cpu, m, ea, size), size)
+        let ea = resolveEa(&mut cpu, m, mode, reg, size)
+        let src = signExtend(eaLoad(&mut cpu, m, ea, size), size)
         let a = cpu.a[dn]
         let res = (a - src) & 0xFFFFFFFF
-        subFlags(cpu, 2, a, src, res, false)
+        subFlags(&mut cpu, 2, a, src, res, false)
         return true
     }
 
     let size = opmode & 0x3
     if (opmode & 0x4) == 0 {
         // CMP: Dn - <ea>
-        let ea = resolveEa(cpu, m, mode, reg, size)
-        let b = eaLoad(cpu, m, ea, size)
+        let ea = resolveEa(&mut cpu, m, mode, reg, size)
+        let b = eaLoad(&mut cpu, m, ea, size)
         let a = getD(cpu, dn, size)
         let res = (a - b) & sizeMask(size)
-        subFlags(cpu, size, a, b, res, false)
+        subFlags(&mut cpu, size, a, b, res, false)
         return true
     }
     // opmode 4/5/6 with mode==1 is CMPM; otherwise EOR <ea> = <ea> ^ Dn
     if mode == 1 {
         // CMPM (Ay)+,(Ax)+
-        let ea1 = resolveEa(cpu, m, 3, reg, size)
-        let ea2 = resolveEa(cpu, m, 3, dn, size)
-        let s = eaLoad(cpu, m, ea1, size)
-        let d = eaLoad(cpu, m, ea2, size)
+        let ea1 = resolveEa(&mut cpu, m, 3, reg, size)
+        let ea2 = resolveEa(&mut cpu, m, 3, dn, size)
+        let s = eaLoad(&mut cpu, m, ea1, size)
+        let d = eaLoad(&mut cpu, m, ea2, size)
         let res = (d - s) & sizeMask(size)
-        subFlags(cpu, size, d, s, res, false)
+        subFlags(&mut cpu, size, d, s, res, false)
         return true
     }
-    let ea = resolveEa(cpu, m, mode, reg, size)
-    let a = eaLoad(cpu, m, ea, size)
+    let ea = resolveEa(&mut cpu, m, mode, reg, size)
+    let a = eaLoad(&mut cpu, m, ea, size)
     let res = (a ^ getD(cpu, dn, size)) & sizeMask(size)
-    eaStore(cpu, m, ea, size, res)
-    setLogicalFlags(cpu, size, res)
+    eaStore(&mut cpu, &mut m, ea, size, res)
+    setLogicalFlags(&mut cpu, size, res)
     return true
 }
 
@@ -1868,35 +1868,35 @@ fn execAnd(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
     // encodings are ABCD (opmode 4) and EXG (opmode 5/6).
     if (mode == 0 || mode == 1) && (opmode == 4 || opmode == 5 || opmode == 6) {
         if opmode == 4 {
-            execBcdRM(cpu, m, op, false) // ABCD
+            execBcdRM(&mut cpu, &mut m, op, false) // ABCD
         } else {
-            execExg(cpu, op, opmode, mode)
+            execExg(&mut cpu, op, opmode, mode)
         }
         return true
     }
     if size == 3 {
         // MULU (opmode 011) / MULS (opmode 111): 16x16 -> 32 into Dn.
-        let ea = resolveEa(cpu, m, mode, reg, 1)
-        let src = eaLoad(cpu, m, ea, 1) & 0xFFFF
+        let ea = resolveEa(&mut cpu, m, mode, reg, 1)
+        let src = eaLoad(&mut cpu, m, ea, 1) & 0xFFFF
         var res: i64 = 0
         if (opmode & 0x4) == 0 {
             res = (getD(cpu, dn, 1) & 0xFFFF) * src
         } else {
             res = (signExtend(getD(cpu, dn, 1), 1) * signExtend(src, 1)) & 0xFFFFFFFF
         }
-        setD(cpu, dn, 2, res & 0xFFFFFFFF)
-        setLogicalFlags(cpu, 2, res)
+        setD(&mut cpu, dn, 2, res & 0xFFFFFFFF)
+        setLogicalFlags(&mut cpu, 2, res)
         return true
     }
-    let ea = resolveEa(cpu, m, mode, reg, size)
+    let ea = resolveEa(&mut cpu, m, mode, reg, size)
     if (opmode & 0x4) == 0 {
-        let res = (getD(cpu, dn, size) & eaLoad(cpu, m, ea, size)) & sizeMask(size)
-        setD(cpu, dn, size, res)
-        setLogicalFlags(cpu, size, res)
+        let res = (getD(cpu, dn, size) & eaLoad(&mut cpu, m, ea, size)) & sizeMask(size)
+        setD(&mut cpu, dn, size, res)
+        setLogicalFlags(&mut cpu, size, res)
     } else {
-        let res = (eaLoad(cpu, m, ea, size) & getD(cpu, dn, size)) & sizeMask(size)
-        eaStore(cpu, m, ea, size, res)
-        setLogicalFlags(cpu, size, res)
+        let res = (eaLoad(&mut cpu, m, ea, size) & getD(cpu, dn, size)) & sizeMask(size)
+        eaStore(&mut cpu, &mut m, ea, size, res)
+        setLogicalFlags(&mut cpu, size, res)
     }
     return true
 }
@@ -1911,19 +1911,19 @@ fn execOr(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
     // Data/addr-reg <ea> in the "op -> <ea>" slot is illegal for OR — opmode 4
     // with mode 0/1 is SBCD.
     if (mode == 0 || mode == 1) && opmode == 4 {
-        execBcdRM(cpu, m, op, true) // SBCD
+        execBcdRM(&mut cpu, &mut m, op, true) // SBCD
         return true
     }
     if size == 3 {
         // DIVU (opmode 011) / DIVS (opmode 111): 32 / 16 -> quotient(lo) + rem(hi).
         let signed = (opmode & 0x4) != 0
-        let ea = resolveEa(cpu, m, mode, reg, 1)
-        let divisorRaw = eaLoad(cpu, m, ea, 1) & 0xFFFF
+        let ea = resolveEa(&mut cpu, m, mode, reg, 1)
+        let divisorRaw = eaLoad(&mut cpu, m, ea, 1) & 0xFFFF
         if cpu.fault {
             return true // odd-address EA: let step() raise the address error
         }
         if divisorRaw == 0 {
-            raiseException(cpu, m, 5) // integer divide-by-zero
+            raiseException(&mut cpu, &mut m, 5) // integer divide-by-zero
             return true
         }
         let dividend = cpu.d[dn] & 0xFFFFFFFF
@@ -1933,42 +1933,42 @@ fn execOr(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
             let q = quotTrunc(dv, ds)
             let r = dv - q * ds
             if q > 32767 || q < -32768 {
-                setBit(cpu, SR_V, true)
-                setBit(cpu, SR_C, false)
+                setBit(&mut cpu, SR_V, true)
+                setBit(&mut cpu, SR_C, false)
                 return true
             }
             let packed = ((r & 0xFFFF) << 16) | (q & 0xFFFF)
             cpu.d[dn] = packed & 0xFFFFFFFF
-            setBit(cpu, SR_N, (q & 0x8000) != 0)
-            setBit(cpu, SR_Z, (q & 0xFFFF) == 0)
-            setBit(cpu, SR_V, false)
-            setBit(cpu, SR_C, false)
+            setBit(&mut cpu, SR_N, (q & 0x8000) != 0)
+            setBit(&mut cpu, SR_Z, (q & 0xFFFF) == 0)
+            setBit(&mut cpu, SR_V, false)
+            setBit(&mut cpu, SR_C, false)
         } else {
             let q = dividend / divisorRaw
             let r = dividend % divisorRaw
             if q > 0xFFFF {
-                setBit(cpu, SR_V, true)
-                setBit(cpu, SR_C, false)
+                setBit(&mut cpu, SR_V, true)
+                setBit(&mut cpu, SR_C, false)
                 return true
             }
             let packed = ((r & 0xFFFF) << 16) | (q & 0xFFFF)
             cpu.d[dn] = packed & 0xFFFFFFFF
-            setBit(cpu, SR_N, (q & 0x8000) != 0)
-            setBit(cpu, SR_Z, (q & 0xFFFF) == 0)
-            setBit(cpu, SR_V, false)
-            setBit(cpu, SR_C, false)
+            setBit(&mut cpu, SR_N, (q & 0x8000) != 0)
+            setBit(&mut cpu, SR_Z, (q & 0xFFFF) == 0)
+            setBit(&mut cpu, SR_V, false)
+            setBit(&mut cpu, SR_C, false)
         }
         return true
     }
-    let ea = resolveEa(cpu, m, mode, reg, size)
+    let ea = resolveEa(&mut cpu, m, mode, reg, size)
     if (opmode & 0x4) == 0 {
-        let res = (getD(cpu, dn, size) | eaLoad(cpu, m, ea, size)) & sizeMask(size)
-        setD(cpu, dn, size, res)
-        setLogicalFlags(cpu, size, res)
+        let res = (getD(cpu, dn, size) | eaLoad(&mut cpu, m, ea, size)) & sizeMask(size)
+        setD(&mut cpu, dn, size, res)
+        setLogicalFlags(&mut cpu, size, res)
     } else {
-        let res = (eaLoad(cpu, m, ea, size) | getD(cpu, dn, size)) & sizeMask(size)
-        eaStore(cpu, m, ea, size, res)
-        setLogicalFlags(cpu, size, res)
+        let res = (eaLoad(&mut cpu, m, ea, size) | getD(cpu, dn, size)) & sizeMask(size)
+        eaStore(&mut cpu, &mut m, ea, size, res)
+        setLogicalFlags(&mut cpu, size, res)
     }
     return true
 }
@@ -1996,7 +1996,7 @@ fn execMovem(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
     } else {
         2
     }
-    let mask = fetch16(cpu, m)
+    let mask = fetch16(&mut cpu, m)
     let mode = (op >> 3) & 0x7
     let reg = op & 0x7
 
@@ -2005,7 +2005,7 @@ fn execMovem(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
         // All transfers share the base parity, so an odd base faults on the first
         // access before any register is touched.
         if (cpu.a[reg] & 1) != 0 {
-            checkAlign(cpu, (cpu.a[reg] - bytes) & 0xFFFFFFFF, sz, false, false)
+            checkAlign(&mut cpu, (cpu.a[reg] - bytes) & 0xFFFFFFFF, sz, false, false)
             return true
         }
         var addr = cpu.a[reg] & 0xFFFFFFFF
@@ -2020,9 +2020,9 @@ fn execMovem(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
                     val = cpu.d[15 - i]
                 }
                 if long {
-                    memWrite32(m, addr, val)
+                    memWrite32(&mut m, addr, val)
                 } else {
-                    memWrite16(m, addr, val & 0xFFFF)
+                    memWrite16(&mut m, addr, val & 0xFFFF)
                 }
             }
             i = i + 1
@@ -2035,7 +2035,7 @@ fn execMovem(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
     if toReg && mode == 3 {
         addr = cpu.a[reg] & 0xFFFFFFFF // postincrement source
     } else {
-        let ea = resolveEa(cpu, m, mode, reg, sz)
+        let ea = resolveEa(&mut cpu, m, mode, reg, sz)
         match ea {
             Ea.MemAddr(a) => {
                 addr = a
@@ -2046,7 +2046,7 @@ fn execMovem(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
         }
     }
     if (addr & 1) != 0 {
-        checkAlign(cpu, addr, sz, toReg, false)
+        checkAlign(&mut cpu, addr, sz, toReg, false)
         return true
     }
     // mask bit 0 = D0 ... 7 = D7, 8 = A0 ... 15 = A7; addresses increase
@@ -2073,9 +2073,9 @@ fn execMovem(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
                     val = cpu.a[i - 8]
                 }
                 if long {
-                    memWrite32(m, addr, val)
+                    memWrite32(&mut m, addr, val)
                 } else {
-                    memWrite16(m, addr, val & 0xFFFF)
+                    memWrite16(&mut m, addr, val & 0xFFFF)
                 }
             }
             addr = (addr + bytes) & 0xFFFFFFFF
@@ -2099,43 +2099,43 @@ fn execMisc(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
     if op == 0x4E73 {
         // RTE: pop SR (word) then PC (long). Privileged; handles the SP swap when
         // the popped SR clears the S bit.
-        if privViolation(cpu, m) {
+        if privViolation(&mut cpu, &mut m) {
             return true
         }
-        let newSr = popWord(cpu, m) & 0xA71F
-        let pc = popLong(cpu, m)
-        setSr(cpu, newSr)
-        setPc(cpu, pc)
+        let newSr = popWord(&mut cpu, m) & 0xA71F
+        let pc = popLong(&mut cpu, m)
+        setSr(&mut cpu, newSr)
+        setPc(&mut cpu, pc)
         return true
     }
     if op == 0x4E75 {
-        setPc(cpu, popLong(cpu, m)) // RTS
+        setPc(&mut cpu, popLong(&mut cpu, m)) // RTS
         return true
     }
     if op == 0x4E77 {
         // RTR: pop CCR (word) then PC (long); supervisor bits untouched
-        let ccr = popWord(cpu, m)
+        let ccr = popWord(&mut cpu, m)
         cpu.sr = (cpu.sr & 0xFF00) | (ccr & 0x1F)
-        setPc(cpu, popLong(cpu, m))
+        setPc(&mut cpu, popLong(&mut cpu, m))
         return true
     }
     if op == 0x4E76 {
         // TRAPV: trap (vector 7) if overflow set, else nothing
         if getBit(cpu, SR_V) {
-            raiseException(cpu, m, 7)
+            raiseException(&mut cpu, &mut m, 7)
         }
         return true
     }
     if op == 0x4E72 {
         // STOP #imm: load SR then halt until an interrupt (modelled as halt)
-        let imm = fetch16(cpu, m) & 0xA71F
-        setSr(cpu, imm)
+        let imm = fetch16(&mut cpu, m) & 0xA71F
+        setSr(&mut cpu, imm)
         cpu.halted = true
         return true
     }
     if (op & 0xFFF0) == 0x4E40 {
         // TRAP #vector — vectors 32..47
-        raiseException(cpu, m, 32 + (op & 0xF))
+        raiseException(&mut cpu, &mut m, 32 + (op & 0xF))
         return true
     }
 
@@ -2144,8 +2144,8 @@ fn execMisc(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
 
     // LINK An,#disp — 0100 1110 0101 0rrr: push An, An=SP, SP += signExt(disp16)
     if (op & 0xFFF8) == 0x4E50 {
-        let disp = signExtend(fetch16(cpu, m), 1)
-        pushLong(cpu, m, cpu.a[reg])
+        let disp = signExtend(fetch16(&mut cpu, m), 1)
+        pushLong(&mut cpu, &mut m, cpu.a[reg])
         cpu.a[reg] = cpu.a[7]
         cpu.a[7] = (cpu.a[7] + disp) & 0xFFFFFFFF
         return true
@@ -2153,7 +2153,7 @@ fn execMisc(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
     // UNLK An — 0100 1110 0101 1rrr: SP=An, An=popLong
     if (op & 0xFFF8) == 0x4E58 {
         cpu.a[7] = cpu.a[reg]
-        cpu.a[reg] = popLong(cpu, m)
+        cpu.a[reg] = popLong(&mut cpu, m)
         return true
     }
     // MOVE An,USP / MOVE USP,An — 0100 1110 0110 drrr (d: 0 to-USP, 1 from-USP).
@@ -2168,42 +2168,42 @@ fn execMisc(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
     }
     // MOVE from SR — 0100 0000 11 mmm rrr: dst.w = SR
     if (op & 0xFFC0) == 0x40C0 {
-        let ea = resolveEa(cpu, m, mode, reg, 1)
-        eaStore(cpu, m, ea, 1, cpu.sr & 0xFFFF)
+        let ea = resolveEa(&mut cpu, m, mode, reg, 1)
+        eaStore(&mut cpu, &mut m, ea, 1, cpu.sr & 0xFFFF)
         return true
     }
     // MOVE to CCR — 0100 0100 11 mmm rrr: CCR = src.w low 5 bits
     if (op & 0xFFC0) == 0x44C0 {
-        let ea = resolveEa(cpu, m, mode, reg, 1)
-        let v = eaLoad(cpu, m, ea, 1)
+        let ea = resolveEa(&mut cpu, m, mode, reg, 1)
+        let v = eaLoad(&mut cpu, m, ea, 1)
         cpu.sr = (cpu.sr & 0xFF00) | (v & 0x1F)
         return true
     }
     // MOVE to SR — 0100 0110 11 mmm rrr: SR = src.w (privileged)
     if (op & 0xFFC0) == 0x46C0 {
-        if privViolation(cpu, m) {
+        if privViolation(&mut cpu, &mut m) {
             return true
         }
-        let ea = resolveEa(cpu, m, mode, reg, 1)
-        let v = eaLoad(cpu, m, ea, 1)
-        setSr(cpu, v & 0xA71F)
+        let ea = resolveEa(&mut cpu, m, mode, reg, 1)
+        let v = eaLoad(&mut cpu, m, ea, 1)
+        setSr(&mut cpu, v & 0xA71F)
         return true
     }
     // TAS <ea> — 0100 1010 11 mmm rrr: test byte, set N/Z, then set bit 7
     if (op & 0xFFC0) == 0x4AC0 {
-        let ea = resolveEa(cpu, m, mode, reg, 0)
-        let v = eaLoad(cpu, m, ea, 0)
-        setNZ(cpu, 0, v)
-        setBit(cpu, SR_V, false)
-        setBit(cpu, SR_C, false)
-        eaStore(cpu, m, ea, 0, v | 0x80)
+        let ea = resolveEa(&mut cpu, m, mode, reg, 0)
+        let v = eaLoad(&mut cpu, m, ea, 0)
+        setNZ(&mut cpu, 0, v)
+        setBit(&mut cpu, SR_V, false)
+        setBit(&mut cpu, SR_C, false)
+        eaStore(&mut cpu, &mut m, ea, 0, v | 0x80)
         return true
     }
 
     // LEA An,<ea>  — 0100 aaa1 11mm mrrr
     if (op & 0xF1C0) == 0x41C0 {
         let an = (op >> 9) & 0x7
-        let ea = resolveEa(cpu, m, mode, reg, 2)
+        let ea = resolveEa(&mut cpu, m, mode, reg, 2)
         match ea {
             Ea.MemAddr(addr) => {
                 cpu.a[an] = addr & 0xFFFFFFFF
@@ -2218,10 +2218,10 @@ fn execMisc(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
     // Reuses the SBCD subtract path (dst - src, here 0 - dstByte) so the carry/
     // digit-adjust matches real HW exactly like SBCD; V/N stay HW-undefined.
     if (op & 0xFFC0) == 0x4800 {
-        let ea = resolveEa(cpu, m, mode, reg, 0)
-        let dst = eaLoad(cpu, m, ea, 0) & 0xFF
-        let res = bcdSub(cpu, dst, 0)
-        eaStore(cpu, m, ea, 0, res)
+        let ea = resolveEa(&mut cpu, m, mode, reg, 0)
+        let dst = eaLoad(&mut cpu, m, ea, 0) & 0xFF
+        let res = bcdSub(&mut cpu, dst, 0)
+        eaStore(&mut cpu, &mut m, ea, 0, res)
         return true
     }
     // SWAP Dn — 0100 1000 0100 0rrr (must precede PEA: both share base 0x4840,
@@ -2230,15 +2230,15 @@ fn execMisc(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
         let v = cpu.d[reg] & 0xFFFFFFFF
         let sw = ((v >> 16) & 0xFFFF) | ((v << 16) & 0xFFFF0000)
         cpu.d[reg] = sw
-        setLogicalFlags(cpu, 2, sw)
+        setLogicalFlags(&mut cpu, 2, sw)
         return true
     }
     // PEA <ea> — 0100 1000 01mm mrrr
     if (op & 0xFFC0) == 0x4840 {
-        let ea = resolveEa(cpu, m, mode, reg, 2)
+        let ea = resolveEa(&mut cpu, m, mode, reg, 2)
         match ea {
             Ea.MemAddr(addr) => {
-                pushLong(cpu, m, addr & 0xFFFFFFFF)
+                pushLong(&mut cpu, &mut m, addr & 0xFFFFFFFF)
                 return true
             }
             _ => {
@@ -2252,17 +2252,17 @@ fn execMisc(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
         if longMode {
             let v = signExtend(cpu.d[reg], 1) & 0xFFFFFFFF
             cpu.d[reg] = v
-            setLogicalFlags(cpu, 2, v)
+            setLogicalFlags(&mut cpu, 2, v)
         } else {
             let v = signExtend(cpu.d[reg], 0) & 0xFFFF
-            setD(cpu, reg, 1, v)
-            setLogicalFlags(cpu, 1, v)
+            setD(&mut cpu, reg, 1, v)
+            setLogicalFlags(&mut cpu, 1, v)
         }
         return true
     }
     // MOVEM — 0100 1D00 1S mmm rrr (checked after EXT, which owns mode-field 000)
     if (op & 0xFB80) == 0x4880 {
-        return execMovem(cpu, m, op)
+        return execMovem(&mut cpu, &mut m, op)
     }
 
     let sub = (op >> 8) & 0xF
@@ -2270,45 +2270,45 @@ fn execMisc(cpu: &mut M68k, m: &mut Mem, op: i64): bool {
 
     // CLR — 0100 0010 ssmm mrrr
     if sub == 0x2 && size != 3 {
-        let ea = resolveEa(cpu, m, mode, reg, size)
-        eaStore(cpu, m, ea, size, 0)
-        setLogicalFlags(cpu, size, 0)
+        let ea = resolveEa(&mut cpu, m, mode, reg, size)
+        eaStore(&mut cpu, &mut m, ea, size, 0)
+        setLogicalFlags(&mut cpu, size, 0)
         return true
     }
     // NOT — 0100 0110 ssmm mrrr
     if sub == 0x6 && size != 3 {
-        let ea = resolveEa(cpu, m, mode, reg, size)
-        let res = (~eaLoad(cpu, m, ea, size)) & sizeMask(size)
-        eaStore(cpu, m, ea, size, res)
-        setLogicalFlags(cpu, size, res)
+        let ea = resolveEa(&mut cpu, m, mode, reg, size)
+        let res = (~eaLoad(&mut cpu, m, ea, size)) & sizeMask(size)
+        eaStore(&mut cpu, &mut m, ea, size, res)
+        setLogicalFlags(&mut cpu, size, res)
         return true
     }
     // NEG — 0100 0100 ssmm mrrr
     if sub == 0x4 && size != 3 {
-        let ea = resolveEa(cpu, m, mode, reg, size)
-        let v = eaLoad(cpu, m, ea, size)
+        let ea = resolveEa(&mut cpu, m, mode, reg, size)
+        let v = eaLoad(&mut cpu, m, ea, size)
         let res = (-v) & sizeMask(size)
-        subFlags(cpu, size, 0, v, res, true)
-        eaStore(cpu, m, ea, size, res)
+        subFlags(&mut cpu, size, 0, v, res, true)
+        eaStore(&mut cpu, &mut m, ea, size, res)
         return true
     }
     // TST — 0100 1010 ssmm mrrr
     if sub == 0xA && size != 3 {
-        let ea = resolveEa(cpu, m, mode, reg, size)
-        let v = eaLoad(cpu, m, ea, size)
-        setLogicalFlags(cpu, size, v)
+        let ea = resolveEa(&mut cpu, m, mode, reg, size)
+        let v = eaLoad(&mut cpu, m, ea, size)
+        setLogicalFlags(&mut cpu, size, v)
         return true
     }
     // JMP — 0100 1110 11mm mrrr ; JSR — 0100 1110 10mm mrrr
     if (op & 0xFFC0) == 0x4EC0 || (op & 0xFFC0) == 0x4E80 {
         let isJsr = (op & 0x0040) == 0
-        let ea = resolveEa(cpu, m, mode, reg, 2)
+        let ea = resolveEa(&mut cpu, m, mode, reg, 2)
         match ea {
             Ea.MemAddr(addr) => {
                 if isJsr {
-                    pushLong(cpu, m, cpu.pc)
+                    pushLong(&mut cpu, &mut m, cpu.pc)
                 }
-                setPc(cpu, addr)
+                setPc(&mut cpu, addr)
                 return true
             }
             _ => {

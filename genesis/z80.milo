@@ -144,7 +144,7 @@ ensures result >= 0 && result <= 255
 fn wr(cpu: &mut Z80, addr: i64, val: i64) {
     let a = addr & 0xFFFF
     if cpu.gen {
-        z80DevWrite(cpu, a, val & 0xFF)
+        z80DevWrite(&mut cpu, a, val & 0xFF)
         return
     }
     cpu.mem[a] = (val & 0xFF) as u8
@@ -208,7 +208,7 @@ pub fn z80DevWrite(cpu: &mut Z80, a: i64, val: i64) {
         return
     }
     if a == 0x7F11 {
-        psgWrite(cpu, val)
+        psgWrite(&mut cpu, val)
         return
     }
 }
@@ -250,8 +250,8 @@ ensures result >= 0 && result <= 255
 }
 
 fn zfetch16(cpu: &mut Z80): i64 {
-    let lo = zfetch8(cpu)
-    let hi = zfetch8(cpu)
+    let lo = zfetch8(&mut cpu)
+    let hi = zfetch8(&mut cpu)
     return (hi << 8) | lo
 }
 
@@ -298,10 +298,10 @@ fn parityEven(v: i64): bool {
 // Set S,Z,Y,X from an 8-bit result (caller sets H,P/V,N,C).
 fn setSZYX(cpu: &mut Z80, r: i64) {
     let v = r & 0xFF
-    setFlag(cpu, FS, (v & 0x80) != 0)
-    setFlag(cpu, FZ, v == 0)
-    setFlag(cpu, FY, (v & 0x20) != 0)
-    setFlag(cpu, FX, (v & 0x08) != 0)
+    setFlag(&mut cpu, FS, (v & 0x80) != 0)
+    setFlag(&mut cpu, FZ, v == 0)
+    setFlag(&mut cpu, FY, (v & 0x20) != 0)
+    setFlag(&mut cpu, FX, (v & 0x08) != 0)
 }
 
 // --- register-index access (Z80 encoding 0..7 = B,C,D,E,H,L,(HL),A) ---
@@ -345,7 +345,7 @@ fn setReg(cpu: &mut Z80, idx: i64, val: i64) {
     } else if idx == 5 {
         cpu.l = v
     } else if idx == 6 {
-        wr(cpu, getHL(cpu), v)
+        wr(&mut cpu, getHL(cpu), v)
     } else {
         cpu.a = v
     }
@@ -356,11 +356,11 @@ fn aluAdd(cpu: &mut Z80, val: i64, carry: i64) {
     let a = cpu.a
     let r = a + val + carry
     let res = r & 0xFF
-    setSZYX(cpu, res)
-    setFlag(cpu, FH, ((a & 0xF) + (val & 0xF) + carry) > 0xF)
-    setFlag(cpu, FPV, (((a ^ ~val) & (a ^ res)) & 0x80) != 0)
-    setFlag(cpu, FN, false)
-    setFlag(cpu, FC, r > 0xFF)
+    setSZYX(&mut cpu, res)
+    setFlag(&mut cpu, FH, ((a & 0xF) + (val & 0xF) + carry) > 0xF)
+    setFlag(&mut cpu, FPV, (((a ^ ~val) & (a ^ res)) & 0x80) != 0)
+    setFlag(&mut cpu, FN, false)
+    setFlag(&mut cpu, FC, r > 0xFF)
     cpu.a = res
 }
 
@@ -369,92 +369,92 @@ fn aluSub(cpu: &mut Z80, val: i64, carry: i64, store: bool) {
     let r = a - val - carry
     let res = r & 0xFF
     // CP uses operand bits 3/5 for X/Y; SUB/SBC use the result.
-    setFlag(cpu, FS, (res & 0x80) != 0)
-    setFlag(cpu, FZ, res == 0)
-    setFlag(cpu, FH, ((a & 0xF) - (val & 0xF) - carry) < 0)
-    setFlag(cpu, FPV, (((a ^ val) & (a ^ res)) & 0x80) != 0)
-    setFlag(cpu, FN, true)
-    setFlag(cpu, FC, r < 0)
+    setFlag(&mut cpu, FS, (res & 0x80) != 0)
+    setFlag(&mut cpu, FZ, res == 0)
+    setFlag(&mut cpu, FH, ((a & 0xF) - (val & 0xF) - carry) < 0)
+    setFlag(&mut cpu, FPV, (((a ^ val) & (a ^ res)) & 0x80) != 0)
+    setFlag(&mut cpu, FN, true)
+    setFlag(&mut cpu, FC, r < 0)
     if store {
-        setFlag(cpu, FY, (res & 0x20) != 0)
-        setFlag(cpu, FX, (res & 0x08) != 0)
+        setFlag(&mut cpu, FY, (res & 0x20) != 0)
+        setFlag(&mut cpu, FX, (res & 0x08) != 0)
         cpu.a = res
     } else {
         // CP: undocumented flags come from the operand
-        setFlag(cpu, FY, (val & 0x20) != 0)
-        setFlag(cpu, FX, (val & 0x08) != 0)
+        setFlag(&mut cpu, FY, (val & 0x20) != 0)
+        setFlag(&mut cpu, FX, (val & 0x08) != 0)
     }
 }
 
 fn aluAnd(cpu: &mut Z80, val: i64) {
     let res = cpu.a & val & 0xFF
-    setSZYX(cpu, res)
-    setFlag(cpu, FH, true)
-    setFlag(cpu, FPV, parityEven(res))
-    setFlag(cpu, FN, false)
-    setFlag(cpu, FC, false)
+    setSZYX(&mut cpu, res)
+    setFlag(&mut cpu, FH, true)
+    setFlag(&mut cpu, FPV, parityEven(res))
+    setFlag(&mut cpu, FN, false)
+    setFlag(&mut cpu, FC, false)
     cpu.a = res
 }
 
 fn aluXor(cpu: &mut Z80, val: i64) {
     let res = (cpu.a ^ val) & 0xFF
-    setSZYX(cpu, res)
-    setFlag(cpu, FH, false)
-    setFlag(cpu, FPV, parityEven(res))
-    setFlag(cpu, FN, false)
-    setFlag(cpu, FC, false)
+    setSZYX(&mut cpu, res)
+    setFlag(&mut cpu, FH, false)
+    setFlag(&mut cpu, FPV, parityEven(res))
+    setFlag(&mut cpu, FN, false)
+    setFlag(&mut cpu, FC, false)
     cpu.a = res
 }
 
 fn aluOr(cpu: &mut Z80, val: i64) {
     let res = (cpu.a | val) & 0xFF
-    setSZYX(cpu, res)
-    setFlag(cpu, FH, false)
-    setFlag(cpu, FPV, parityEven(res))
-    setFlag(cpu, FN, false)
-    setFlag(cpu, FC, false)
+    setSZYX(&mut cpu, res)
+    setFlag(&mut cpu, FH, false)
+    setFlag(&mut cpu, FPV, parityEven(res))
+    setFlag(&mut cpu, FN, false)
+    setFlag(&mut cpu, FC, false)
     cpu.a = res
 }
 
 fn doAlu(cpu: &mut Z80, op: i64, val: i64) {
     let cf = cpu.f & FC
     if op == 0 {
-        aluAdd(cpu, val, 0)
+        aluAdd(&mut cpu, val, 0)
     } else if op == 1 {
-        aluAdd(cpu, val, cf)
+        aluAdd(&mut cpu, val, cf)
     } else if op == 2 {
-        aluSub(cpu, val, 0, true)
+        aluSub(&mut cpu, val, 0, true)
     } else if op == 3 {
-        aluSub(cpu, val, cf, true)
+        aluSub(&mut cpu, val, cf, true)
     } else if op == 4 {
-        aluAnd(cpu, val)
+        aluAnd(&mut cpu, val)
     } else if op == 5 {
-        aluXor(cpu, val)
+        aluXor(&mut cpu, val)
     } else if op == 6 {
-        aluOr(cpu, val)
+        aluOr(&mut cpu, val)
     } else {
-        aluSub(cpu, val, 0, false) // CP
+        aluSub(&mut cpu, val, 0, false) // CP
     }
 }
 
 fn incReg(cpu: &mut Z80, idx: i64) {
-    let v = getReg(cpu, idx)
+    let v = getReg(&mut cpu, idx)
     let res = (v + 1) & 0xFF
-    setSZYX(cpu, res)
-    setFlag(cpu, FH, (v & 0xF) == 0xF)
-    setFlag(cpu, FPV, v == 0x7F)
-    setFlag(cpu, FN, false)
-    setReg(cpu, idx, res)
+    setSZYX(&mut cpu, res)
+    setFlag(&mut cpu, FH, (v & 0xF) == 0xF)
+    setFlag(&mut cpu, FPV, v == 0x7F)
+    setFlag(&mut cpu, FN, false)
+    setReg(&mut cpu, idx, res)
 }
 
 fn decReg(cpu: &mut Z80, idx: i64) {
-    let v = getReg(cpu, idx)
+    let v = getReg(&mut cpu, idx)
     let res = (v - 1) & 0xFF
-    setSZYX(cpu, res)
-    setFlag(cpu, FH, (v & 0xF) == 0)
-    setFlag(cpu, FPV, v == 0x80)
-    setFlag(cpu, FN, true)
-    setReg(cpu, idx, res)
+    setSZYX(&mut cpu, res)
+    setFlag(&mut cpu, FH, (v & 0xF) == 0)
+    setFlag(&mut cpu, FPV, v == 0x80)
+    setFlag(&mut cpu, FN, true)
+    setReg(&mut cpu, idx, res)
 }
 
 fn getAF(cpu: &Z80): i64 {
@@ -492,11 +492,11 @@ fn getRP(cpu: &Z80, p: i64): i64 {
 
 fn setRP(cpu: &mut Z80, p: i64, v: i64) {
     if p == 0 {
-        setBC(cpu, v)
+        setBC(&mut cpu, v)
     } else if p == 1 {
-        setDE(cpu, v)
+        setDE(&mut cpu, v)
     } else if p == 2 {
-        setHL(cpu, v)
+        setHL(&mut cpu, v)
     } else {
         cpu.sp = v & 0xFFFF
     }
@@ -512,9 +512,9 @@ fn getRP2(cpu: &Z80, p: i64): i64 {
 
 fn setRP2(cpu: &mut Z80, p: i64, v: i64) {
     if p == 3 {
-        setAF(cpu, v)
+        setAF(&mut cpu, v)
     } else {
-        setRP(cpu, p, v)
+        setRP(&mut cpu, p, v)
     }
 }
 
@@ -528,7 +528,7 @@ pub fn z80Interrupt(cpu: &mut Z80): bool {
     cpu.iff1 = false
     cpu.iff2 = false
     cpu.halted = false
-    push16(cpu, cpu.pc)
+    push16(&mut cpu, cpu.pc)
     if cpu.im == 2 {
         let vec = ((cpu.i << 8) | 0xFF) & 0xFFFF
         cpu.pc = rd(cpu, vec) | (rd(cpu, (vec + 1) & 0xFFFF) << 8)
@@ -540,9 +540,9 @@ pub fn z80Interrupt(cpu: &mut Z80): bool {
 
 fn push16(cpu: &mut Z80, v: i64) {
     cpu.sp = (cpu.sp - 1) & 0xFFFF
-    wr(cpu, cpu.sp, (v >> 8) & 0xFF)
+    wr(&mut cpu, cpu.sp, (v >> 8) & 0xFF)
     cpu.sp = (cpu.sp - 1) & 0xFFFF
-    wr(cpu, cpu.sp, v & 0xFF)
+    wr(&mut cpu, cpu.sp, v & 0xFF)
 }
 
 fn pop16(cpu: &mut Z80): i64 {
@@ -584,11 +584,11 @@ fn testCC(cpu: &Z80, y: i64): bool {
 fn add16(cpu: &mut Z80, a: i64, b: i64): i64 {
     let r = a + b
     let res = r & 0xFFFF
-    setFlag(cpu, FH, ((a & 0xFFF) + (b & 0xFFF)) > 0xFFF)
-    setFlag(cpu, FC, r > 0xFFFF)
-    setFlag(cpu, FN, false)
-    setFlag(cpu, FY, (res & 0x2000) != 0)
-    setFlag(cpu, FX, (res & 0x0800) != 0)
+    setFlag(&mut cpu, FH, ((a & 0xFFF) + (b & 0xFFF)) > 0xFFF)
+    setFlag(&mut cpu, FC, r > 0xFFFF)
+    setFlag(&mut cpu, FN, false)
+    setFlag(&mut cpu, FY, (res & 0x2000) != 0)
+    setFlag(&mut cpu, FX, (res & 0x0800) != 0)
     return res
 }
 
@@ -638,11 +638,11 @@ fn rotAcc(cpu: &mut Z80, kind: i64) {
         )) & 0xFF
     }
     cpu.a = res
-    setFlag(cpu, FC, carry)
-    setFlag(cpu, FH, false)
-    setFlag(cpu, FN, false)
-    setFlag(cpu, FY, (res & 0x20) != 0)
-    setFlag(cpu, FX, (res & 0x08) != 0)
+    setFlag(&mut cpu, FC, carry)
+    setFlag(&mut cpu, FH, false)
+    setFlag(&mut cpu, FN, false)
+    setFlag(&mut cpu, FY, (res & 0x20) != 0)
+    setFlag(&mut cpu, FX, (res & 0x08) != 0)
 }
 
 fn doDaa(cpu: &mut Z80) {
@@ -662,23 +662,23 @@ fn doDaa(cpu: &mut Z80) {
     } else {
         a = (a + adjust) & 0xFF
     }
-    setFlag(cpu, FH, (((cpu.a ^ a) & 0x10) != 0))
+    setFlag(&mut cpu, FH, (((cpu.a ^ a) & 0x10) != 0))
     cpu.a = a
-    setSZYX(cpu, a)
-    setFlag(cpu, FPV, parityEven(a))
-    setFlag(cpu, FC, carry)
+    setSZYX(&mut cpu, a)
+    setFlag(&mut cpu, FPV, parityEven(a))
+    setFlag(&mut cpu, FC, carry)
 }
 
 // Execute one instruction. Returns false on an opcode not yet implemented.
 pub fn stepZ80(cpu: &mut Z80): bool {
-    ymTimerTick(cpu, 1) // ~1 emulated-us per step (see struct note); paces sound drivers
+    ymTimerTick(&mut cpu, 1) // ~1 emulated-us per step (see struct note); paces sound drivers
     // While halted the Z80 idles on the HALT instruction, executing nothing until
     // an interrupt clears the flag (z80Interrupt). Without this it fetched and ran
     // whatever followed HALT, corrupting sound drivers that HALT-wait for the vint.
     if cpu.halted {
         return true
     }
-    let op = fetchOp(cpu)
+    let op = fetchOp(&mut cpu)
     let x = (op >> 6) & 0x3
     let y = (op >> 3) & 0x7
     let z = op & 0x7
@@ -690,29 +690,29 @@ pub fn stepZ80(cpu: &mut Z80): bool {
         return true
     }
     if op == 0xCB {
-        return execCB(cpu)
+        return execCB(&mut cpu)
     }
     if op == 0xED {
-        return execED(cpu)
+        return execED(&mut cpu)
     }
     if op == 0xDD {
-        return execIndex(cpu, false)
+        return execIndex(&mut cpu, false)
     }
     if op == 0xFD {
-        return execIndex(cpu, true)
+        return execIndex(&mut cpu, true)
     }
     if x == 1 {
-        setReg(cpu, y, getReg(cpu, z)) // LD r, r'
+        setReg(&mut cpu, y, getReg(&mut cpu, z)) // LD r, r'
         return true
     }
     if x == 2 {
-        doAlu(cpu, y, getReg(cpu, z)) // ALU A, r
+        doAlu(&mut cpu, y, getReg(&mut cpu, z)) // ALU A, r
         return true
     }
     if x == 0 {
-        return execX0(cpu, op, y, z, p, q)
+        return execX0(&mut cpu, op, y, z, p, q)
     }
-    return execX3(cpu, op, y, z, p, q)
+    return execX3(&mut cpu, op, y, z, p, q)
 }
 
 fn execX0(cpu: &mut Z80, _op: i64, y: i64, z: i64, p: i64, q: i64): bool {
@@ -723,11 +723,11 @@ fn execX0(cpu: &mut Z80, _op: i64, y: i64, z: i64, p: i64, q: i64): bool {
         if y == 1 {
             // EX AF, AF'
             let t = getAF(cpu)
-            setAF(cpu, cpu.af_)
+            setAF(&mut cpu, cpu.af_)
             cpu.af_ = t
             return true
         }
-        let d = signExt8(zfetch8(cpu))
+        let d = signExt8(zfetch8(&mut cpu))
         if y == 2 {
             // DJNZ
             cpu.b = (cpu.b - 1) & 0xFF
@@ -748,61 +748,61 @@ fn execX0(cpu: &mut Z80, _op: i64, y: i64, z: i64, p: i64, q: i64): bool {
     }
     if z == 1 {
         if q == 0 {
-            setRP(cpu, p, zfetch16(cpu)) // LD rp, nn
+            setRP(&mut cpu, p, zfetch16(&mut cpu)) // LD rp, nn
         } else {
-            setHL(cpu, add16(cpu, getHL(cpu), getRP(cpu, p))) // ADD HL, rp
+            setHL(&mut cpu, add16(&mut cpu, getHL(cpu), getRP(cpu, p))) // ADD HL, rp
         }
         return true
     }
     if z == 2 {
-        return execIndirect(cpu, p, q)
+        return execIndirect(&mut cpu, p, q)
     }
     if z == 3 {
         if q == 0 {
-            setRP(cpu, p, (getRP(cpu, p) + 1) & 0xFFFF) // INC rp
+            setRP(&mut cpu, p, (getRP(cpu, p) + 1) & 0xFFFF) // INC rp
         } else {
-            setRP(cpu, p, (getRP(cpu, p) - 1) & 0xFFFF) // DEC rp
+            setRP(&mut cpu, p, (getRP(cpu, p) - 1) & 0xFFFF) // DEC rp
         }
         return true
     }
     if z == 4 {
-        incReg(cpu, y)
+        incReg(&mut cpu, y)
         return true
     }
     if z == 5 {
-        decReg(cpu, y)
+        decReg(&mut cpu, y)
         return true
     }
     if z == 6 {
-        setReg(cpu, y, zfetch8(cpu)) // LD r, n
+        setReg(&mut cpu, y, zfetch8(&mut cpu)) // LD r, n
         return true
     }
     // z == 7: RLCA/RRCA/RLA/RRA/DAA/CPL/SCF/CCF
     if y < 4 {
-        rotAcc(cpu, y)
+        rotAcc(&mut cpu, y)
     } else if y == 4 {
-        doDaa(cpu)
+        doDaa(&mut cpu)
     } else if y == 5 {
         cpu.a = (~cpu.a) & 0xFF // CPL
-        setFlag(cpu, FH, true)
-        setFlag(cpu, FN, true)
-        setFlag(cpu, FY, (cpu.a & 0x20) != 0)
-        setFlag(cpu, FX, (cpu.a & 0x08) != 0)
+        setFlag(&mut cpu, FH, true)
+        setFlag(&mut cpu, FN, true)
+        setFlag(&mut cpu, FY, (cpu.a & 0x20) != 0)
+        setFlag(&mut cpu, FX, (cpu.a & 0x08) != 0)
     } else if y == 6 {
         // SCF
-        setFlag(cpu, FC, true)
-        setFlag(cpu, FH, false)
-        setFlag(cpu, FN, false)
-        setFlag(cpu, FY, (cpu.a & 0x20) != 0)
-        setFlag(cpu, FX, (cpu.a & 0x08) != 0)
+        setFlag(&mut cpu, FC, true)
+        setFlag(&mut cpu, FH, false)
+        setFlag(&mut cpu, FN, false)
+        setFlag(&mut cpu, FY, (cpu.a & 0x20) != 0)
+        setFlag(&mut cpu, FX, (cpu.a & 0x08) != 0)
     } else {
         // CCF
         let oldC = (cpu.f & FC) != 0
-        setFlag(cpu, FH, oldC)
-        setFlag(cpu, FC,!oldC)
-        setFlag(cpu, FN, false)
-        setFlag(cpu, FY, (cpu.a & 0x20) != 0)
-        setFlag(cpu, FX, (cpu.a & 0x08) != 0)
+        setFlag(&mut cpu, FH, oldC)
+        setFlag(&mut cpu, FC,!oldC)
+        setFlag(&mut cpu, FN, false)
+        setFlag(&mut cpu, FY, (cpu.a & 0x20) != 0)
+        setFlag(&mut cpu, FX, (cpu.a & 0x08) != 0)
     }
     return true
 }
@@ -811,15 +811,15 @@ fn execX0(cpu: &mut Z80, _op: i64, y: i64, z: i64, p: i64, q: i64): bool {
 fn execIndirect(cpu: &mut Z80, p: i64, q: i64): bool {
     if q == 0 {
         if p == 0 {
-            wr(cpu, getBC(cpu), cpu.a) // LD (BC), A
+            wr(&mut cpu, getBC(cpu), cpu.a) // LD (BC), A
         } else if p == 1 {
-            wr(cpu, getDE(cpu), cpu.a) // LD (DE), A
+            wr(&mut cpu, getDE(cpu), cpu.a) // LD (DE), A
         } else if p == 2 {
-            let nn = zfetch16(cpu) // LD (nn), HL
-            wr(cpu, nn, cpu.l)
-            wr(cpu, nn + 1, cpu.h)
+            let nn = zfetch16(&mut cpu) // LD (nn), HL
+            wr(&mut cpu, nn, cpu.l)
+            wr(&mut cpu, nn + 1, cpu.h)
         } else {
-            wr(cpu, zfetch16(cpu), cpu.a) // LD (nn), A
+            wr(&mut cpu, zfetch16(&mut cpu), cpu.a) // LD (nn), A
         }
     } else {
         if p == 0 {
@@ -827,11 +827,11 @@ fn execIndirect(cpu: &mut Z80, p: i64, q: i64): bool {
         } else if p == 1 {
             cpu.a = rd(cpu, getDE(cpu)) // LD A, (DE)
         } else if p == 2 {
-            let nn = zfetch16(cpu) // LD HL, (nn)
+            let nn = zfetch16(&mut cpu) // LD HL, (nn)
             cpu.l = rd(cpu, nn)
             cpu.h = rd(cpu, nn + 1)
         } else {
-            cpu.a = rd(cpu, zfetch16(cpu)) // LD A, (nn)
+            cpu.a = rd(cpu, zfetch16(&mut cpu)) // LD A, (nn)
         }
     }
     return true
@@ -841,25 +841,25 @@ fn execX3(cpu: &mut Z80, _op: i64, y: i64, z: i64, p: i64, q: i64): bool {
     if z == 0 {
         // RET cc
         if testCC(cpu, y) {
-            cpu.pc = pop16(cpu)
+            cpu.pc = pop16(&mut cpu)
         }
         return true
     }
     if z == 1 {
         if q == 0 {
-            setRP2(cpu, p, pop16(cpu)) // POP rp2
+            setRP2(&mut cpu, p, pop16(&mut cpu)) // POP rp2
             return true
         }
         if p == 0 {
-            cpu.pc = pop16(cpu) // RET
+            cpu.pc = pop16(&mut cpu) // RET
         } else if p == 1 {
             // EXX
             let b = getBC(cpu)
             let d = getDE(cpu)
             let h = getHL(cpu)
-            setBC(cpu, cpu.bc_)
-            setDE(cpu, cpu.de_)
-            setHL(cpu, cpu.hl_)
+            setBC(&mut cpu, cpu.bc_)
+            setDE(&mut cpu, cpu.de_)
+            setHL(&mut cpu, cpu.hl_)
             cpu.bc_ = b
             cpu.de_ = d
             cpu.hl_ = h
@@ -871,7 +871,7 @@ fn execX3(cpu: &mut Z80, _op: i64, y: i64, z: i64, p: i64, q: i64): bool {
         return true
     }
     if z == 2 {
-        let nn = zfetch16(cpu) // JP cc, nn
+        let nn = zfetch16(&mut cpu) // JP cc, nn
         if testCC(cpu, y) {
             cpu.pc = nn
         }
@@ -879,15 +879,15 @@ fn execX3(cpu: &mut Z80, _op: i64, y: i64, z: i64, p: i64, q: i64): bool {
     }
     if z == 3 {
         if y == 0 {
-            cpu.pc = zfetch16(cpu) // JP nn
+            cpu.pc = zfetch16(&mut cpu) // JP nn
             return true
         }
         if y == 4 {
             // EX (SP), HL
             let lo = rd(cpu, cpu.sp)
             let hi = rd(cpu, cpu.sp + 1)
-            wr(cpu, cpu.sp, cpu.l)
-            wr(cpu, cpu.sp + 1, cpu.h)
+            wr(&mut cpu, cpu.sp, cpu.l)
+            wr(&mut cpu, cpu.sp + 1, cpu.h)
             cpu.l = lo
             cpu.h = hi
             return true
@@ -895,8 +895,8 @@ fn execX3(cpu: &mut Z80, _op: i64, y: i64, z: i64, p: i64, q: i64): bool {
         if y == 5 {
             // EX DE, HL
             let d = getDE(cpu)
-            setDE(cpu, getHL(cpu))
-            setHL(cpu, d)
+            setDE(&mut cpu, getHL(cpu))
+            setHL(&mut cpu, d)
             return true
         }
         if y == 6 {
@@ -912,32 +912,32 @@ fn execX3(cpu: &mut Z80, _op: i64, y: i64, z: i64, p: i64, q: i64): bool {
         return false // CB prefix / IN / OUT — deferred
     }
     if z == 4 {
-        let nn = zfetch16(cpu) // CALL cc, nn
+        let nn = zfetch16(&mut cpu) // CALL cc, nn
         if testCC(cpu, y) {
-            push16(cpu, cpu.pc)
+            push16(&mut cpu, cpu.pc)
             cpu.pc = nn
         }
         return true
     }
     if z == 5 {
         if q == 0 {
-            push16(cpu, getRP2(cpu, p)) // PUSH rp2
+            push16(&mut cpu, getRP2(cpu, p)) // PUSH rp2
             return true
         }
         if p == 0 {
-            let nn = zfetch16(cpu) // CALL nn
-            push16(cpu, cpu.pc)
+            let nn = zfetch16(&mut cpu) // CALL nn
+            push16(&mut cpu, cpu.pc)
             cpu.pc = nn
             return true
         }
         return false // DD / ED / FD prefixes — deferred
     }
     if z == 6 {
-        doAlu(cpu, y, zfetch8(cpu)) // ALU A, n
+        doAlu(&mut cpu, y, zfetch8(&mut cpu)) // ALU A, n
         return true
     }
     // z == 7: RST
-    push16(cpu, cpu.pc)
+    push16(&mut cpu, cpu.pc)
     cpu.pc = y * 8
     return true
 }
@@ -959,19 +959,19 @@ ensures result >= -128 && result <= 127
 // INC/DEC on an arbitrary 8-bit value with flag effects, returning the result.
 fn incVal(cpu: &mut Z80, v: i64): i64 {
     let res = (v + 1) & 0xFF
-    setSZYX(cpu, res)
-    setFlag(cpu, FH, (v & 0xF) == 0xF)
-    setFlag(cpu, FPV, v == 0x7F)
-    setFlag(cpu, FN, false)
+    setSZYX(&mut cpu, res)
+    setFlag(&mut cpu, FH, (v & 0xF) == 0xF)
+    setFlag(&mut cpu, FPV, v == 0x7F)
+    setFlag(&mut cpu, FN, false)
     return res
 }
 
 fn decVal(cpu: &mut Z80, v: i64): i64 {
     let res = (v - 1) & 0xFF
-    setSZYX(cpu, res)
-    setFlag(cpu, FH, (v & 0xF) == 0)
-    setFlag(cpu, FPV, v == 0x80)
-    setFlag(cpu, FN, true)
+    setSZYX(&mut cpu, res)
+    setFlag(&mut cpu, FH, (v & 0xF) == 0)
+    setFlag(&mut cpu, FPV, v == 0x80)
+    setFlag(&mut cpu, FN, true)
     return res
 }
 
@@ -984,12 +984,12 @@ fn execIndex(cpu: &mut Z80, isIY: bool): bool {
     } else {
         cpu.ix
     }
-    let op = fetchOp(cpu)
+    let op = fetchOp(&mut cpu)
 
     if op == 0xCB {
-        let d = signExt8(zfetch8(cpu))
+        let d = signExt8(zfetch8(&mut cpu))
         let addr = (base + d) & 0xFFFF
-        return execDDCB(cpu, addr)
+        return execDDCB(&mut cpu, addr)
     }
     // ADD IX, rp  (rp p==2 is IX itself)
     if op == 0x09 || op == 0x19 || op == 0x29 || op == 0x39 {
@@ -998,48 +998,48 @@ fn execIndex(cpu: &mut Z80, isIY: bool): bool {
         if p == 2 {
             rp = base
         }
-        base = add16(cpu, base, rp)
-        return storeIndex(cpu, isIY, base)
+        base = add16(&mut cpu, base, rp)
+        return storeIndex(&mut cpu, isIY, base)
     }
     if op == 0x21 {
-        base = zfetch16(cpu) // LD IX, nn
-        return storeIndex(cpu, isIY, base)
+        base = zfetch16(&mut cpu) // LD IX, nn
+        return storeIndex(&mut cpu, isIY, base)
     }
     if op == 0x22 {
-        let nn = zfetch16(cpu) // LD (nn), IX
-        wr(cpu, nn, base & 0xFF)
-        wr(cpu, nn + 1, (base >> 8) & 0xFF)
+        let nn = zfetch16(&mut cpu) // LD (nn), IX
+        wr(&mut cpu, nn, base & 0xFF)
+        wr(&mut cpu, nn + 1, (base >> 8) & 0xFF)
         return true
     }
     if op == 0x2A {
-        let nn = zfetch16(cpu) // LD IX, (nn)
+        let nn = zfetch16(&mut cpu) // LD IX, (nn)
         base = rd(cpu, nn) | (rd(cpu, nn + 1) << 8)
-        return storeIndex(cpu, isIY, base)
+        return storeIndex(&mut cpu, isIY, base)
     }
     if op == 0x23 {
         base = (base + 1) & 0xFFFF // INC IX
-        return storeIndex(cpu, isIY, base)
+        return storeIndex(&mut cpu, isIY, base)
     }
     if op == 0x2B {
         base = (base - 1) & 0xFFFF // DEC IX
-        return storeIndex(cpu, isIY, base)
+        return storeIndex(&mut cpu, isIY, base)
     }
     if op == 0xE5 {
-        push16(cpu, base) // PUSH IX
+        push16(&mut cpu, base) // PUSH IX
         return true
     }
     if op == 0xE1 {
-        base = pop16(cpu) // POP IX
-        return storeIndex(cpu, isIY, base)
+        base = pop16(&mut cpu) // POP IX
+        return storeIndex(&mut cpu, isIY, base)
     }
     if op == 0xE3 {
         // EX (SP), IX
         let lo = rd(cpu, cpu.sp)
         let hi = rd(cpu, cpu.sp + 1)
-        wr(cpu, cpu.sp, base & 0xFF)
-        wr(cpu, cpu.sp + 1, (base >> 8) & 0xFF)
+        wr(&mut cpu, cpu.sp, base & 0xFF)
+        wr(&mut cpu, cpu.sp + 1, (base >> 8) & 0xFF)
         base = (hi << 8) | lo
-        return storeIndex(cpu, isIY, base)
+        return storeIndex(&mut cpu, isIY, base)
     }
     if op == 0xE9 {
         cpu.pc = base // JP (IX)
@@ -1050,21 +1050,21 @@ fn execIndex(cpu: &mut Z80, isIY: bool): bool {
         return true
     }
     if op == 0x34 {
-        let d = signExt8(zfetch8(cpu)) // INC (IX+d)
+        let d = signExt8(zfetch8(&mut cpu)) // INC (IX+d)
         let a = (base + d) & 0xFFFF
-        wr(cpu, a, incVal(cpu, rd(cpu, a)))
+        wr(&mut cpu, a, incVal(&mut cpu, rd(cpu, a)))
         return true
     }
     if op == 0x35 {
-        let d = signExt8(zfetch8(cpu)) // DEC (IX+d)
+        let d = signExt8(zfetch8(&mut cpu)) // DEC (IX+d)
         let a = (base + d) & 0xFFFF
-        wr(cpu, a, decVal(cpu, rd(cpu, a)))
+        wr(&mut cpu, a, decVal(&mut cpu, rd(cpu, a)))
         return true
     }
     if op == 0x36 {
-        let d = signExt8(zfetch8(cpu)) // LD (IX+d), n
-        let n = zfetch8(cpu)
-        wr(cpu, (base + d) & 0xFFFF, n)
+        let d = signExt8(zfetch8(&mut cpu)) // LD (IX+d), n
+        let n = zfetch8(&mut cpu)
+        wr(&mut cpu, (base + d) & 0xFFFF, n)
         return true
     }
 
@@ -1073,19 +1073,19 @@ fn execIndex(cpu: &mut Z80, isIY: bool): bool {
     let z = op & 0x7
     // LD r,(IX+d) / LD (IX+d),r  (x==1 with a memory operand)
     if x == 1 && op != 0x76 && (y == 6 || z == 6) {
-        let d = signExt8(zfetch8(cpu))
+        let d = signExt8(zfetch8(&mut cpu))
         let a = (base + d) & 0xFFFF
         if z == 6 {
-            setReg(cpu, y, rd(cpu, a)) // LD y, (IX+d)  — y is a real register
+            setReg(&mut cpu, y, rd(cpu, a)) // LD y, (IX+d)  — y is a real register
         } else {
-            wr(cpu, a, getReg(cpu, z)) // LD (IX+d), z
+            wr(&mut cpu, a, getReg(&mut cpu, z)) // LD (IX+d), z
         }
         return true
     }
     // ALU A, (IX+d)
     if x == 2 && z == 6 {
-        let d = signExt8(zfetch8(cpu))
-        doAlu(cpu, y, rd(cpu, (base + d) & 0xFFFF))
+        let d = signExt8(zfetch8(&mut cpu))
+        doAlu(&mut cpu, y, rd(cpu, (base + d) & 0xFFFF))
         return true
     }
     // Any other opcode: the prefix is inert here (IXh/IXl split not modelled).
@@ -1104,7 +1104,7 @@ fn storeIndex(cpu: &mut Z80, isIY: bool, v: i64): bool {
 // DDCB/FDCB: rotate/shift/bit/res/set on (index+d). Non-BIT ops also copy the
 // result into register z (undocumented) unless z selects (HL)/memory.
 fn execDDCB(cpu: &mut Z80, addr: i64): bool {
-    let op = zfetch8(cpu) // final byte does not bump R
+    let op = zfetch8(&mut cpu) // final byte does not bump R
     let x = (op >> 6) & 0x3
     let y = (op >> 3) & 0x7
     let z = op & 0x7
@@ -1113,67 +1113,67 @@ fn execDDCB(cpu: &mut Z80, addr: i64): bool {
     if x == 1 {
         // BIT y, (index+d): X/Y from the address high byte
         let bitset = ((v >> y) & 1) != 0
-        setFlag(cpu, FZ,!bitset)
-        setFlag(cpu, FPV,!bitset)
-        setFlag(cpu, FH, true)
-        setFlag(cpu, FN, false)
-        setFlag(cpu, FS, y == 7 && bitset)
-        setFlag(cpu, FY, ((addr >> 8) & 0x20) != 0)
-        setFlag(cpu, FX, ((addr >> 8) & 0x08) != 0)
+        setFlag(&mut cpu, FZ,!bitset)
+        setFlag(&mut cpu, FPV,!bitset)
+        setFlag(&mut cpu, FH, true)
+        setFlag(&mut cpu, FN, false)
+        setFlag(&mut cpu, FS, y == 7 && bitset)
+        setFlag(&mut cpu, FY, ((addr >> 8) & 0x20) != 0)
+        setFlag(&mut cpu, FX, ((addr >> 8) & 0x08) != 0)
         return true
     }
     var res: i64 = 0
     if x == 0 {
-        res = shiftOp(cpu, y, v)
+        res = shiftOp(&mut cpu, y, v)
     } else if x == 2 {
         res = v & ~(1 << y) // RES
     } else {
         res = v | (1 << y) // SET
     }
-    wr(cpu, addr, res)
+    wr(&mut cpu, addr, res)
     if z != 6 {
-        setReg(cpu, z, res) // undocumented register copy
+        setReg(&mut cpu, z, res) // undocumented register copy
     }
     return true
 }
 
 // CB prefix: rotates/shifts (x=0), BIT (x=1), RES (x=2), SET (x=3) on reg z.
 fn execCB(cpu: &mut Z80): bool {
-    let op = fetchOp(cpu) // the CB byte already bumped R; the operand op bumps again
+    let op = fetchOp(&mut cpu) // the CB byte already bumped R; the operand op bumps again
     let x = (op >> 6) & 0x3
     let y = (op >> 3) & 0x7
     let z = op & 0x7
 
     if x == 0 {
-        let v = getReg(cpu, z)
-        let res = shiftOp(cpu, y, v)
-        setReg(cpu, z, res)
+        let v = getReg(&mut cpu, z)
+        let res = shiftOp(&mut cpu, y, v)
+        setReg(&mut cpu, z, res)
         return true
     }
     if x == 1 {
         // BIT y, r
-        let v = getReg(cpu, z)
+        let v = getReg(&mut cpu, z)
         let bitset = ((v >> y) & 1) != 0
-        setFlag(cpu, FZ,!bitset)
-        setFlag(cpu, FPV,!bitset)
-        setFlag(cpu, FH, true)
-        setFlag(cpu, FN, false)
-        setFlag(cpu, FS, y == 7 && bitset)
+        setFlag(&mut cpu, FZ,!bitset)
+        setFlag(&mut cpu, FPV,!bitset)
+        setFlag(&mut cpu, FH, true)
+        setFlag(&mut cpu, FN, false)
+        setFlag(&mut cpu, FS, y == 7 && bitset)
         // undocumented X/Y: from the operand, except (HL) uses WZ high byte
         if z == 6 {
-            setFlag(cpu, FY, ((cpu.wz >> 8) & 0x20) != 0)
-            setFlag(cpu, FX, ((cpu.wz >> 8) & 0x08) != 0)
+            setFlag(&mut cpu, FY, ((cpu.wz >> 8) & 0x20) != 0)
+            setFlag(&mut cpu, FX, ((cpu.wz >> 8) & 0x08) != 0)
         } else {
-            setFlag(cpu, FY, (v & 0x20) != 0)
-            setFlag(cpu, FX, (v & 0x08) != 0)
+            setFlag(&mut cpu, FY, (v & 0x20) != 0)
+            setFlag(&mut cpu, FX, (v & 0x08) != 0)
         }
         return true
     }
     if x == 2 {
-        setReg(cpu, z, getReg(cpu, z) & ~(1 << y)) // RES
+        setReg(&mut cpu, z, getReg(&mut cpu, z) & ~(1 << y)) // RES
         return true
     }
-    setReg(cpu, z, getReg(cpu, z) | (1 << y)) // SET
+    setReg(&mut cpu, z, getReg(&mut cpu, z) | (1 << y)) // SET
     return true
 }
 
@@ -1184,15 +1184,15 @@ fn adcHL(cpu: &mut Z80, rp: i64) {
     let c = cpu.f & FC
     let r = hl + rp + c
     let res = r & 0xFFFF
-    setFlag(cpu, FS, (res & 0x8000) != 0)
-    setFlag(cpu, FZ, res == 0)
-    setFlag(cpu, FH, ((hl & 0xFFF) + (rp & 0xFFF) + c) > 0xFFF)
-    setFlag(cpu, FPV, (((~(hl ^ rp)) & (hl ^ res)) & 0x8000) != 0)
-    setFlag(cpu, FN, false)
-    setFlag(cpu, FC, r > 0xFFFF)
-    setFlag(cpu, FY, (res & 0x2000) != 0)
-    setFlag(cpu, FX, (res & 0x0800) != 0)
-    setHL(cpu, res)
+    setFlag(&mut cpu, FS, (res & 0x8000) != 0)
+    setFlag(&mut cpu, FZ, res == 0)
+    setFlag(&mut cpu, FH, ((hl & 0xFFF) + (rp & 0xFFF) + c) > 0xFFF)
+    setFlag(&mut cpu, FPV, (((~(hl ^ rp)) & (hl ^ res)) & 0x8000) != 0)
+    setFlag(&mut cpu, FN, false)
+    setFlag(&mut cpu, FC, r > 0xFFFF)
+    setFlag(&mut cpu, FY, (res & 0x2000) != 0)
+    setFlag(&mut cpu, FX, (res & 0x0800) != 0)
+    setHL(&mut cpu, res)
 }
 
 fn sbcHL(cpu: &mut Z80, rp: i64) {
@@ -1200,30 +1200,30 @@ fn sbcHL(cpu: &mut Z80, rp: i64) {
     let c = cpu.f & FC
     let r = hl - rp - c
     let res = r & 0xFFFF
-    setFlag(cpu, FS, (res & 0x8000) != 0)
-    setFlag(cpu, FZ, res == 0)
-    setFlag(cpu, FH, ((hl & 0xFFF) - (rp & 0xFFF) - c) < 0)
-    setFlag(cpu, FPV, (((hl ^ rp) & (hl ^ res)) & 0x8000) != 0)
-    setFlag(cpu, FN, true)
-    setFlag(cpu, FC, r < 0)
-    setFlag(cpu, FY, (res & 0x2000) != 0)
-    setFlag(cpu, FX, (res & 0x0800) != 0)
-    setHL(cpu, res)
+    setFlag(&mut cpu, FS, (res & 0x8000) != 0)
+    setFlag(&mut cpu, FZ, res == 0)
+    setFlag(&mut cpu, FH, ((hl & 0xFFF) - (rp & 0xFFF) - c) < 0)
+    setFlag(&mut cpu, FPV, (((hl ^ rp) & (hl ^ res)) & 0x8000) != 0)
+    setFlag(&mut cpu, FN, true)
+    setFlag(&mut cpu, FC, r < 0)
+    setFlag(&mut cpu, FY, (res & 0x2000) != 0)
+    setFlag(&mut cpu, FX, (res & 0x0800) != 0)
+    setHL(&mut cpu, res)
 }
 
 // One LDI/LDD block transfer step (dir +1 or -1).
 fn blockLd(cpu: &mut Z80, dir: i64) {
     let v = rd(cpu, getHL(cpu))
-    wr(cpu, getDE(cpu), v)
-    setDE(cpu, (getDE(cpu) + dir) & 0xFFFF)
-    setHL(cpu, (getHL(cpu) + dir) & 0xFFFF)
-    setBC(cpu, (getBC(cpu) - 1) & 0xFFFF)
+    wr(&mut cpu, getDE(cpu), v)
+    setDE(&mut cpu, (getDE(cpu) + dir) & 0xFFFF)
+    setHL(&mut cpu, (getHL(cpu) + dir) & 0xFFFF)
+    setBC(&mut cpu, (getBC(cpu) - 1) & 0xFFFF)
     let n = (v + cpu.a) & 0xFF
-    setFlag(cpu, FH, false)
-    setFlag(cpu, FN, false)
-    setFlag(cpu, FPV, getBC(cpu) != 0)
-    setFlag(cpu, FY, (n & 0x02) != 0)
-    setFlag(cpu, FX, (n & 0x08) != 0)
+    setFlag(&mut cpu, FH, false)
+    setFlag(&mut cpu, FN, false)
+    setFlag(&mut cpu, FPV, getBC(cpu) != 0)
+    setFlag(&mut cpu, FY, (n & 0x02) != 0)
+    setFlag(&mut cpu, FX, (n & 0x08) != 0)
 }
 
 // One CPI/CPD block compare step.
@@ -1231,26 +1231,26 @@ fn blockCp(cpu: &mut Z80, dir: i64) {
     let v = rd(cpu, getHL(cpu))
     let r = (cpu.a - v) & 0xFF
     let hcarry = ((cpu.a & 0xF) - (v & 0xF)) < 0
-    setHL(cpu, (getHL(cpu) + dir) & 0xFFFF)
-    setBC(cpu, (getBC(cpu) - 1) & 0xFFFF)
-    setFlag(cpu, FS, (r & 0x80) != 0)
-    setFlag(cpu, FZ, r == 0)
-    setFlag(cpu, FH, hcarry)
-    setFlag(cpu, FN, true)
-    setFlag(cpu, FPV, getBC(cpu) != 0)
+    setHL(&mut cpu, (getHL(cpu) + dir) & 0xFFFF)
+    setBC(&mut cpu, (getBC(cpu) - 1) & 0xFFFF)
+    setFlag(&mut cpu, FS, (r & 0x80) != 0)
+    setFlag(&mut cpu, FZ, r == 0)
+    setFlag(&mut cpu, FH, hcarry)
+    setFlag(&mut cpu, FN, true)
+    setFlag(&mut cpu, FPV, getBC(cpu) != 0)
     var hb: i64 = 0
     if hcarry {
         hb = 1
     }
     let n = (r - hb) & 0xFF
-    setFlag(cpu, FY, (n & 0x02) != 0)
-    setFlag(cpu, FX, (n & 0x08) != 0)
+    setFlag(&mut cpu, FY, (n & 0x02) != 0)
+    setFlag(&mut cpu, FX, (n & 0x08) != 0)
 }
 
 // ED prefix. IN/OUT (and block I/O) are deferred — Genesis maps the YM2612 into
 // memory, not Z80 ports, so the sound driver does not use them.
 fn execED(cpu: &mut Z80): bool {
-    let op = fetchOp(cpu)
+    let op = fetchOp(&mut cpu)
     let x = (op >> 6) & 0x3
     let y = (op >> 3) & 0x7
     let z = op & 0x7
@@ -1260,22 +1260,22 @@ fn execED(cpu: &mut Z80): bool {
     if x == 1 {
         if z == 2 {
             if q == 0 {
-                sbcHL(cpu, getRP(cpu, p))
+                sbcHL(&mut cpu, getRP(cpu, p))
             } else {
-                adcHL(cpu, getRP(cpu, p))
+                adcHL(&mut cpu, getRP(cpu, p))
             }
             return true
         }
         if z == 3 {
-            let nn = zfetch16(cpu)
+            let nn = zfetch16(&mut cpu)
             if q == 0 {
                 let v = getRP(cpu, p) // LD (nn), rp
-                wr(cpu, nn, v & 0xFF)
-                wr(cpu, nn + 1, (v >> 8) & 0xFF)
+                wr(&mut cpu, nn, v & 0xFF)
+                wr(&mut cpu, nn + 1, (v >> 8) & 0xFF)
             } else {
                 let lo = rd(cpu, nn) // LD rp, (nn)
                 let hi = rd(cpu, nn + 1)
-                setRP(cpu, p, (hi << 8) | lo)
+                setRP(&mut cpu, p, (hi << 8) | lo)
             }
             return true
         }
@@ -1283,16 +1283,16 @@ fn execED(cpu: &mut Z80): bool {
             // NEG
             let a = cpu.a
             cpu.a = (-a) & 0xFF
-            setSZYX(cpu, cpu.a)
-            setFlag(cpu, FH, (a & 0xF) != 0)
-            setFlag(cpu, FPV, a == 0x80)
-            setFlag(cpu, FN, true)
-            setFlag(cpu, FC, a != 0)
+            setSZYX(&mut cpu, cpu.a)
+            setFlag(&mut cpu, FH, (a & 0xF) != 0)
+            setFlag(&mut cpu, FPV, a == 0x80)
+            setFlag(&mut cpu, FN, true)
+            setFlag(&mut cpu, FC, a != 0)
             return true
         }
         if z == 5 {
             // RETN / RETI: pop PC, restore iff1 from iff2
-            cpu.pc = pop16(cpu)
+            cpu.pc = pop16(&mut cpu)
             cpu.iff1 = cpu.iff2
             return true
         }
@@ -1319,33 +1319,33 @@ fn execED(cpu: &mut Z80): bool {
                 } else {
                     cpu.r
                 }
-                setFlag(cpu, FS, (cpu.a & 0x80) != 0)
-                setFlag(cpu, FZ, cpu.a == 0)
-                setFlag(cpu, FY, (cpu.a & 0x20) != 0)
-                setFlag(cpu, FX, (cpu.a & 0x08) != 0)
-                setFlag(cpu, FH, false)
-                setFlag(cpu, FN, false)
-                setFlag(cpu, FPV, cpu.iff2)
+                setFlag(&mut cpu, FS, (cpu.a & 0x80) != 0)
+                setFlag(&mut cpu, FZ, cpu.a == 0)
+                setFlag(&mut cpu, FY, (cpu.a & 0x20) != 0)
+                setFlag(&mut cpu, FX, (cpu.a & 0x08) != 0)
+                setFlag(&mut cpu, FH, false)
+                setFlag(&mut cpu, FN, false)
+                setFlag(&mut cpu, FPV, cpu.iff2)
             } else if y == 4 {
                 // RRD
                 let m = rd(cpu, getHL(cpu))
                 let newM = ((m >> 4) | ((cpu.a & 0xF) << 4)) & 0xFF
                 cpu.a = (cpu.a & 0xF0) | (m & 0xF)
-                wr(cpu, getHL(cpu), newM)
-                setSZYX(cpu, cpu.a)
-                setFlag(cpu, FPV, parityEven(cpu.a))
-                setFlag(cpu, FH, false)
-                setFlag(cpu, FN, false)
+                wr(&mut cpu, getHL(cpu), newM)
+                setSZYX(&mut cpu, cpu.a)
+                setFlag(&mut cpu, FPV, parityEven(cpu.a))
+                setFlag(&mut cpu, FH, false)
+                setFlag(&mut cpu, FN, false)
             } else if y == 5 {
                 // RLD
                 let m = rd(cpu, getHL(cpu))
                 let newM = ((m << 4) | (cpu.a & 0xF)) & 0xFF
                 cpu.a = (cpu.a & 0xF0) | ((m >> 4) & 0xF)
-                wr(cpu, getHL(cpu), newM)
-                setSZYX(cpu, cpu.a)
-                setFlag(cpu, FPV, parityEven(cpu.a))
-                setFlag(cpu, FH, false)
-                setFlag(cpu, FN, false)
+                wr(&mut cpu, getHL(cpu), newM)
+                setSZYX(&mut cpu, cpu.a)
+                setFlag(&mut cpu, FPV, parityEven(cpu.a))
+                setFlag(&mut cpu, FH, false)
+                setFlag(&mut cpu, FN, false)
             }
             return true
         }
@@ -1360,14 +1360,14 @@ fn execED(cpu: &mut Z80): bool {
                 dir = 1
             }
             if z == 0 {
-                blockLd(cpu, dir)
+                blockLd(&mut cpu, dir)
                 if (y == 6 || y == 7) && getBC(cpu) != 0 {
                     cpu.pc = (cpu.pc - 2) & 0xFFFF // LDIR/LDDR repeat
                 }
                 return true
             }
             if z == 1 {
-                blockCp(cpu, dir)
+                blockCp(&mut cpu, dir)
                 if (y == 6 || y == 7) && getBC(cpu) != 0 && (cpu.f & FZ) == 0 {
                     cpu.pc = (cpu.pc - 2) & 0xFFFF // CPIR/CPDR repeat
                 }
@@ -1430,10 +1430,10 @@ fn shiftOp(cpu: &mut Z80, kind: i64, v: i64): i64 {
         carry = (v & 0x01) != 0
         res = (v >> 1) & 0xFF // SRL
     }
-    setSZYX(cpu, res)
-    setFlag(cpu, FPV, parityEven(res))
-    setFlag(cpu, FH, false)
-    setFlag(cpu, FN, false)
-    setFlag(cpu, FC, carry)
+    setSZYX(&mut cpu, res)
+    setFlag(&mut cpu, FPV, parityEven(res))
+    setFlag(&mut cpu, FH, false)
+    setFlag(&mut cpu, FN, false)
+    setFlag(&mut cpu, FC, carry)
     return res
 }

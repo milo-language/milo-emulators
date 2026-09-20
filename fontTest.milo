@@ -23,15 +23,15 @@ fn main(): i32 {
     let font = fontChars()
     let glyphs = fontGlyphs()
 
-    clear(fb, bg)
-    drawTextCentered(fb, "MILO RETRO CONSOLE", 20, 4, gold, font, glyphs)
-    drawText(fb, "ABCDEFGHIJKLM", 30, 70, 4, white, font, glyphs)
-    drawText(fb, "NOPQRSTUVWXYZ", 30, 110, 4, white, font, glyphs)
-    drawText(fb, "0123456789", 30, 150, 4, white, font, glyphs)
-    drawText(fb, "-_.:!()[]/,'", 30, 190, 4, white, font, glyphs)
-    drawText(fb, "SUPER MARIO BROS 3 (USA).NES", 30, 250, 3, dim, font, glyphs)
-    drawText(fb, "SONIC 2 [REV A].MD", 30, 285, 3, dim, font, glyphs)
-    drawText(fb, "F-ZERO (V1.1).SFC", 30, 320, 3, dim, font, glyphs)
+    clear(&mut fb, bg)
+    drawTextCentered(&mut fb, "MILO RETRO CONSOLE", 20, 4, gold, font, glyphs)
+    drawText(&mut fb, "ABCDEFGHIJKLM", 30, 70, 4, white, font, glyphs)
+    drawText(&mut fb, "NOPQRSTUVWXYZ", 30, 110, 4, white, font, glyphs)
+    drawText(&mut fb, "0123456789", 30, 150, 4, white, font, glyphs)
+    drawText(&mut fb, "-_.:!()[]/,'", 30, 190, 4, white, font, glyphs)
+    drawText(&mut fb, "SUPER MARIO BROS 3 (USA).NES", 30, 250, 3, dim, font, glyphs)
+    drawText(&mut fb, "SONIC 2 [REV A].MD", 30, 285, 3, dim, font, glyphs)
+    drawText(&mut fb, "F-ZERO (V1.1).SFC", 30, 320, 3, dim, font, glyphs)
 
     // Dump RGB24 (drop the alpha byte of each ABGR word).
     var data: string = ""

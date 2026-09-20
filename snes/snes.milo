@@ -64,7 +64,7 @@ fn queueAudio(m: &mut Mem, dev: u32): void {
         samp.push(0)
         i = i + 1
     }
-    dspGenerate(m.apuMem, samp, 535)
+    dspGenerate(&mut m.apuMem, &mut samp, 535)
     var buf: Vec<u8> = Vec.new()
     i = 0
     while i < 535 {
@@ -265,7 +265,7 @@ fn main(): i32 {
     // it's written back on quit so the game's own saves survive shutdown.
     let srmPath = romPath + ".srm"
     if let Result.Ok(data) = readFile(srmPath) {
-        sramFromString(m, data)
+        sramFromString(&mut m, data)
         print("loaded save: " + srmPath)
     }
 
@@ -334,12 +334,12 @@ fn main(): i32 {
         while !quit {
             let frameStart = SDL_GetTicks() as i64
             if focused {
-                stepFrame(cpu, m)
+                stepFrame(&mut cpu, &mut m)
                 if audioDev != 0 {
-                    queueAudio(m, audioDev)
+                    queueAudio(&mut m, audioDev)
                 }
             }
-            renderFrame(m.ppu, fb)
+            renderFrame(m.ppu, &mut fb)
 
             saveTick = saveTick + 1
             if srmPath.len > 0 && saveTick >= 180 { // ~3s at 60fps
@@ -433,7 +433,7 @@ fn main(): i32 {
             if ld && !prevLoad {
                 match readFile(statePath) {
                     Result.Ok(data) => {
-                        if loadState(cpu, m, data) {
+                        if loadState(&mut cpu, &mut m, data) {
                             print("state loaded <- " + statePath)
                         } else {
                             print("state file invalid")

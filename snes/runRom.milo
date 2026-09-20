@@ -63,7 +63,7 @@ fn main(): i32 {
     var cpu = newCpuReset(m)
     var f: i64 = 0
     while f < frames {
-        stepFrame(cpu, m)
+        stepFrame(&mut cpu, &mut m)
         f = f + 1
     }
 
@@ -73,7 +73,7 @@ fn main(): i32 {
         fb.push(0)
         i = i + 1
     }
-    renderFrame(m.ppu, fb)
+    renderFrame(m.ppu, &mut fb)
 
     var out = String.withCapacity(200000)
     let hdr = "P6\n256 224\n255\n"

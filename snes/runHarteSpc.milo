@@ -42,30 +42,30 @@ fn nextTok(t: &mut Toks): i64 {
 }
 
 fn loadRegs(spc: &mut Spc, m: &mut SpcMem, t: &mut Toks): void {
-    spc.a = nextTok(t)
-    spc.x = nextTok(t)
-    spc.y = nextTok(t)
-    spc.sp = nextTok(t)
-    spc.pc = nextTok(t)
-    spc.psw = nextTok(t)
-    let ramN = nextTok(t)
+    spc.a = nextTok(&mut t)
+    spc.x = nextTok(&mut t)
+    spc.y = nextTok(&mut t)
+    spc.sp = nextTok(&mut t)
+    spc.pc = nextTok(&mut t)
+    spc.psw = nextTok(&mut t)
+    let ramN = nextTok(&mut t)
     var j: i64 = 0
     while j < ramN {
-        let addr = nextTok(t)
-        let val = nextTok(t)
-        spcWrite(m, addr, val)
+        let addr = nextTok(&mut t)
+        let val = nextTok(&mut t)
+        spcWrite(&mut m, addr, val)
         j = j + 1
     }
 }
 
 fn checkFinal(spc: &Spc, m: &SpcMem, t: &mut Toks): string {
-    let fa = nextTok(t)
-    let fx = nextTok(t)
-    let fy = nextTok(t)
-    let fsp = nextTok(t)
-    let fpc = nextTok(t)
-    let fpsw = nextTok(t)
-    let ramN = nextTok(t)
+    let fa = nextTok(&mut t)
+    let fx = nextTok(&mut t)
+    let fy = nextTok(&mut t)
+    let fsp = nextTok(&mut t)
+    let fpc = nextTok(&mut t)
+    let fpsw = nextTok(&mut t)
+    let ramN = nextTok(&mut t)
     var mismatch = ""
     if spc.a != fa && mismatch == "" {
         mismatch = "A got " + hex(spc.a) + " want " + hex(fa)
@@ -87,10 +87,10 @@ fn checkFinal(spc: &Spc, m: &SpcMem, t: &mut Toks): string {
     }
     var j: i64 = 0
     while j < ramN {
-        let addr = nextTok(t)
-        let want = nextTok(t)
-        if spcRead(m, addr) != want && mismatch == "" {
-            mismatch = "RAM[" + hex(addr) + "] got " + hex(spcRead(m, addr)) + " want " + hex(want)
+        let addr = nextTok(&mut t)
+        let want = nextTok(&mut t)
+        if spcRead(&mut m, addr) != want && mismatch == "" {
+            mismatch = "RAM[" + hex(addr) + "] got " + hex(spcRead(&mut m, addr)) + " want " + hex(want)
         }
         j = j + 1
     }
@@ -122,7 +122,7 @@ fn main(): i32 {
     var t = Toks {
         s: raw, pos: 0
     }
-    let total = nextTok(t)
+    let total = nextTok(&mut t)
     var spc = Spc {
         a: 0, x: 0, y: 0, sp: 0, pc: 0, psw: 0
     }
@@ -135,10 +135,10 @@ fn main(): i32 {
         if i >= maxCases {
             break
         }
-        spcMemReset(m)
-        loadRegs(spc, m, t)
-        spcStep(spc, m)
-        let mismatch = checkFinal(spc, m, t)
+        spcMemReset(&mut m)
+        loadRegs(&mut spc, &mut m, &mut t)
+        spcStep(&mut spc, &mut m)
+        let mismatch = checkFinal(spc, m, &mut t)
         if mismatch == "" {
             passed = passed + 1
         } else {

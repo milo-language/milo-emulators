@@ -25,8 +25,8 @@ pub fn main(): i32 {
     var h = createNes(rom)
     var frame: i64 = 0
     while frame < 30 {
-        setButtons(h, 0 as u8)
-        stepFrame(h)
+        setButtons(&mut h, 0 as u8)
+        stepFrame(&mut h)
         // FNV-1a over the framebuffer. Wrapping on purpose: the hash is defined
         // modulo 2^32, and a plain `*` would (correctly) trap on overflow.
         var hash: u32 = 2166136261

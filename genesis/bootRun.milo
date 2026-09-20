@@ -69,7 +69,7 @@ fn main(): i32 {
     var m = newMem()
     m.genesis = true
     m.z80.gen = true
-    loadRom(m, cart)
+    loadRom(&mut m, cart)
 
     let sp = ((m.ram[0] as i64) << 24) | ((m.ram[1] as i64) << 16) | ((m.ram[2] as i64) << 8) | (m.ram[3] as i64)
     let pc = ((m.ram[4] as i64) << 24) | ((m.ram[5] as i64) << 16) | ((m.ram[6] as i64) << 8) | (m.ram[7] as i64)
@@ -95,13 +95,13 @@ fn main(): i32 {
     while steps < maxSteps {
         let okPc = cpu.pc
         let okOp = memRead16Pub(m, cpu.pc)
-        if !step(cpu, m) {
+        if !step(&mut cpu, &mut m) {
             stopped = "unimplemented opcode " + hex4(okOp) + " at PC=" + hex8(okPc)
             break
         }
         // Co-run the Z80 at ~half the 68k instruction rate (rough clock ratio).
         if z80Running(m) && (steps & 1) == 0 {
-            if !stepZ80(m.z80) {
+            if !stepZ80(&mut m.z80) {
                 z80Fail = z80Fail + 1
             } else {
                 z80Steps = z80Steps + 1
@@ -122,7 +122,7 @@ fn main(): i32 {
                 if hIntCounter == 0 {
                     hIntCounter = m.vdpRegs[10]
                     if (m.vdpRegs[0] & 0x10) != 0 {
-                        deliverInterrupt(cpu, m, 4)
+                        deliverInterrupt(&mut cpu, &mut m, 4)
                     }
                 } else {
                     hIntCounter = hIntCounter - 1
@@ -137,7 +137,7 @@ fn main(): i32 {
                 // live YM/PSG register state; append as signed-16 little-endian.
                 var sa: i64 = 0
                 while sa < 735 {
-                    let smp = synthSample(synth, m.z80)
+                    let smp = synthSample(&mut synth, &mut m.z80)
                     wav.push((smp.l & 0xFF) as u8)
                     wav.push(((smp.l >> 8) & 0xFF) as u8)
                     wav.push((smp.r & 0xFF) as u8)
@@ -151,13 +151,13 @@ fn main(): i32 {
         let inVblank = m.vdpLine >= 224
         if inVblank && !wasVblank {
             if (m.vdpRegs[1] & 0x20) != 0 {
-                if deliverInterrupt(cpu, m, 6) {
+                if deliverInterrupt(&mut cpu, &mut m, 6) {
                     vints = vints + 1
                 }
             }
             // The Z80 INT line is tied to VBlank (independent of the 68k's reg1).
             if z80Running(m) {
-                z80Interrupt(m.z80)
+                z80Interrupt(&mut m.z80)
             }
         }
         wasVblank = inVblank

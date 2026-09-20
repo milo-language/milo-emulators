@@ -189,7 +189,7 @@ fn dumpFrame(bus: &Bus): void {
 
 fn runNes(cart: Cartridge): i32 {
     var bus = newBus(cart)
-    var cpu = newCpuReset(bus)
+    var cpu = newCpuReset(&mut bus)
 
     if SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0 {
         print("SDL_Init failed")
@@ -235,19 +235,19 @@ fn runNes(cart: Cartridge): i32 {
                 let startFrame = bus.ppu.frame
                 while bus.ppu.frame == startFrame {
                     let before = cpu.cyc
-                    step(cpu, bus)
+                    step(&mut cpu, &mut bus)
                     let used = cpu.cyc - before
                     var k: i64 = 0
                     while k < used * 3 {
-                        clockPpu(bus)
+                        clockPpu(&mut bus)
                         k = k + 1
                     }
-                    clockApu(bus, used)
-                    serviceInterrupts(cpu, bus)
+                    clockApu(&mut bus, used)
+                    serviceInterrupts(&mut cpu, &mut bus)
                 }
             }
 
-            renderFrame(bus.ppu)
+            renderFrame(&mut bus.ppu)
             SDL_UpdateTexture(tex, 0 as *u8, bus.ppu.fb[0].addrOf() as *u8, 256 * 4)
             SDL_RenderClear(ren)
             SDL_RenderCopy(ren, tex, 0 as *u8, 0 as *u8)

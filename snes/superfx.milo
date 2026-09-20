@@ -259,7 +259,7 @@ fn readR14(fx: &mut Fx): void {
 fn setDreg(fx: &mut Fx, v: i64): void {
     fx.reg[fx.dreg] = v & 0xFFFFFFFF
     if fx.dreg == 14 {
-        readR14(fx)
+        readR14(&mut fx)
     }
 }
 
@@ -350,8 +350,8 @@ fn plotAddr(fx: &Fx, x: i64, y: i64): i64 {
 fn fxPlot(fx: &mut Fx): void {
     let x = fx.reg[1] & 0xFF
     let y = fx.reg[2] & 0xFF
-    r15inc(fx)
-    clrflags(fx)
+    r15inc(&mut fx)
+    clrflags(&mut fx)
     fx.reg[1] = (fx.reg[1] + 1) & 0xFFFFFFFF
 
     if y >= fx.screenHeight {
@@ -407,11 +407,11 @@ fn fxPlot(fx: &mut Fx): void {
 fn fxRpix(fx: &mut Fx): void {
     let x = fx.reg[1] & 0xFF
     let y = fx.reg[2] & 0xFF
-    r15inc(fx)
+    r15inc(&mut fx)
 
     if y >= fx.screenHeight {
-        setDreg(fx, 0)
-        clrflags(fx)
+        setDreg(&mut fx, 0)
+        clrflags(&mut fx)
         return
     }
 
@@ -427,9 +427,9 @@ fn fxRpix(fx: &mut Fx): void {
         }
         p = p + 1
     }
-    setDreg(fx, v)
+    setDreg(&mut fx, v)
     fx.vZero = v
-    clrflags(fx)
+    clrflags(&mut fx)
 }
 
 // 00 - stop
@@ -441,8 +441,8 @@ fn fxStop(fx: &mut Fx): void {
     }
     fx.por = 0
     fx.pipe = 1
-    clrflags(fx)
-    r15inc(fx)
+    clrflags(&mut fx)
+    r15inc(&mut fx)
 }
 
 // 02 - cache
@@ -452,19 +452,19 @@ fn fxCache(fx: &mut Fx): void {
         fx.cacheActive = true
         fx.cbr = c
     }
-    clrflags(fx)
-    r15inc(fx)
+    clrflags(&mut fx)
+    r15inc(&mut fx)
 }
 
 // Branch helper: read the signed offset operand, advance, and optionally take it.
 fn fxBranch(fx: &mut Fx, take: bool): void {
     let v = fx.pipe
-    r15inc(fx)
-    fetchPipe(fx)
+    r15inc(&mut fx)
+    fetchPipe(&mut fx)
     if take {
         fx.reg[15] = (fx.reg[15] + sex8(v)) & 0xFFFF
     } else {
-        r15inc(fx)
+        r15inc(&mut fx)
     }
 }
 
@@ -490,7 +490,7 @@ fn testCY(fx: &Fx): bool {
 // R15 min/max window over the current run — a tight window means a stuck loop.
 fn fxStepOne(fx: &mut Fx): void {
     let op = fx.pipe
-    fetchPipe(fx)
+    fetchPipe(&mut fx)
     var alt: i64 = 0
     if fx.alt1 {
         alt = alt | 1
@@ -502,52 +502,52 @@ fn fxStepOne(fx: &mut Fx): void {
     // 0x00-0x0f: control + branches
     if op < 0x10 {
         if op == 0x00 {
-            fxStop(fx)
+            fxStop(&mut fx)
         } else if op == 0x01 {
-            clrflags(fx)
-            r15inc(fx) // nop
+            clrflags(&mut fx)
+            r15inc(&mut fx) // nop
         } else if op == 0x02 {
-            fxCache(fx)
+            fxCache(&mut fx)
         } else if op == 0x03 { // lsr
             let s = sregVal(fx)
             fx.vCarry = s & 1
             let v = (s & 0xFFFF) >> 1
-            r15inc(fx)
-            setDreg(fx, v)
+            r15inc(&mut fx)
+            setDreg(&mut fx, v)
             fx.vSign = v
             fx.vZero = v
-            clrflags(fx)
+            clrflags(&mut fx)
         } else if op == 0x04 { // rol
             let s = sregVal(fx)
             let v = ((s << 1) + fx.vCarry) & 0xFFFF
             fx.vCarry = (s >> 15) & 1
-            r15inc(fx)
-            setDreg(fx, v)
+            r15inc(&mut fx)
+            setDreg(&mut fx, v)
             fx.vSign = v
             fx.vZero = v
-            clrflags(fx)
+            clrflags(&mut fx)
         } else if op == 0x05 { // bra
-            fxBranch(fx, true)
+            fxBranch(&mut fx, true)
         } else if op == 0x06 { // bge
-            fxBranch(fx, testS(fx) == testOV(fx))
+            fxBranch(&mut fx, testS(fx) == testOV(fx))
         } else if op == 0x07 { // blt
-            fxBranch(fx, testS(fx) != testOV(fx))
+            fxBranch(&mut fx, testS(fx) != testOV(fx))
         } else if op == 0x08 { // bne
-            fxBranch(fx,!testZ(fx))
+            fxBranch(&mut fx,!testZ(fx))
         } else if op == 0x09 { // beq
-            fxBranch(fx, testZ(fx))
+            fxBranch(&mut fx, testZ(fx))
         } else if op == 0x0A { // bpl
-            fxBranch(fx,!testS(fx))
+            fxBranch(&mut fx,!testS(fx))
         } else if op == 0x0B { // bmi
-            fxBranch(fx, testS(fx))
+            fxBranch(&mut fx, testS(fx))
         } else if op == 0x0C { // bcc
-            fxBranch(fx,!testCY(fx))
+            fxBranch(&mut fx,!testCY(fx))
         } else if op == 0x0D { // bcs
-            fxBranch(fx, testCY(fx))
+            fxBranch(&mut fx, testCY(fx))
         } else if op == 0x0E { // bvc
-            fxBranch(fx,!testOV(fx))
+            fxBranch(&mut fx,!testOV(fx))
         } else { // 0x0F bvs
-            fxBranch(fx, testOV(fx))
+            fxBranch(&mut fx, testOV(fx))
         }
         return
     }
@@ -559,16 +559,16 @@ fn fxStepOne(fx: &mut Fx): void {
         let n = op & 0xF
         if fx.bflag {
             fx.reg[n] = sregVal(fx) & 0xFFFFFFFF
-            clrflags(fx)
+            clrflags(&mut fx)
             if n == 14 {
-                readR14(fx)
+                readR14(&mut fx)
             }
             if n != 15 {
-                r15inc(fx)
+                r15inc(&mut fx)
             }
         } else {
             fx.dreg = n
-            r15inc(fx)
+            r15inc(&mut fx)
         }
         return
     }
@@ -579,7 +579,7 @@ fn fxStepOne(fx: &mut Fx): void {
         fx.bflag = true
         fx.sreg = n
         fx.dreg = n
-        r15inc(fx)
+        r15inc(&mut fx)
         return
     }
 
@@ -589,12 +589,12 @@ fn fxStepOne(fx: &mut Fx): void {
             let n = op & 0xF
             let adr = fx.reg[n]
             fx.lastRamAdr = adr
-            ramWrite(fx, adr, sregVal(fx))
+            ramWrite(&mut fx, adr, sregVal(fx))
             if alt != 1 && alt != 3 {
-                ramWrite(fx, adr ^ 1, sregVal(fx) >> 8) // word: high byte
+                ramWrite(&mut fx, adr ^ 1, sregVal(fx) >> 8) // word: high byte
             }
-            clrflags(fx)
-            r15inc(fx)
+            clrflags(&mut fx)
+            r15inc(&mut fx)
         } else if op == 0x3C { // loop
             fx.reg[12] = (fx.reg[12] - 1) & 0xFFFFFFFF
             fx.vSign = fx.reg[12]
@@ -602,22 +602,22 @@ fn fxStepOne(fx: &mut Fx): void {
             if (fx.reg[12] & 0xFFFF) != 0 {
                 fx.reg[15] = fx.reg[13] & 0xFFFF
             } else {
-                r15inc(fx)
+                r15inc(&mut fx)
             }
-            clrflags(fx)
+            clrflags(&mut fx)
         } else if op == 0x3D { // alt1
             fx.alt1 = true
             fx.bflag = false
-            r15inc(fx)
+            r15inc(&mut fx)
         } else if op == 0x3E { // alt2
             fx.alt2 = true
             fx.bflag = false
-            r15inc(fx)
+            r15inc(&mut fx)
         } else { // 0x3F alt3
             fx.alt1 = true
             fx.alt2 = true
             fx.bflag = false
-            r15inc(fx)
+            r15inc(&mut fx)
         }
         return
     }
@@ -632,27 +632,27 @@ fn fxStepOne(fx: &mut Fx): void {
             if alt != 1 && alt != 3 {
                 v = v | (ramRead(fx, adr ^ 1) << 8)
             }
-            r15inc(fx)
-            setDreg(fx, v)
-            clrflags(fx)
+            r15inc(&mut fx)
+            setDreg(&mut fx, v)
+            clrflags(&mut fx)
         } else if op == 0x4C { // plot / rpix
             if alt == 1 || alt == 3 {
-                fxRpix(fx)
+                fxRpix(&mut fx)
             } else {
-                fxPlot(fx)
+                fxPlot(&mut fx)
             }
         } else if op == 0x4D { // swap
             let s = sregVal(fx)
             let v = (((s & 0xFF) << 8) | ((s >> 8) & 0xFF))
-            r15inc(fx)
-            setDreg(fx, v)
+            r15inc(&mut fx)
+            setDreg(&mut fx, v)
             fx.vSign = v
             fx.vZero = v
-            clrflags(fx)
+            clrflags(&mut fx)
         } else if op == 0x4E { // color / cmode
             if alt == 1 || alt == 3 { // cmode
                 fx.por = sregVal(fx) & 0xFF
-                fxUpdateScreen(fx)
+                fxUpdateScreen(&mut fx)
             } else { // color
                 var c = sregVal(fx) & 0xFF
                 if (fx.por & 0x04) != 0 {
@@ -664,15 +664,15 @@ fn fxStepOne(fx: &mut Fx): void {
                     fx.color = c & 0xFF
                 }
             }
-            clrflags(fx)
-            r15inc(fx)
+            clrflags(&mut fx)
+            r15inc(&mut fx)
         } else { // 0x4F not
             let v = (~sregVal(fx)) & 0xFFFFFFFF
-            r15inc(fx)
-            setDreg(fx, v)
+            r15inc(&mut fx)
+            setDreg(&mut fx, v)
             fx.vSign = v
             fx.vZero = v
-            clrflags(fx)
+            clrflags(&mut fx)
         }
         return
     }
@@ -707,9 +707,9 @@ fn fxStepOne(fx: &mut Fx): void {
         fx.vOverflow = (~(sregVal(fx) ^ bRaw)) & (bRaw ^ t) & 0x8000
         fx.vSign = t
         fx.vZero = t
-        r15inc(fx)
-        setDreg(fx, t)
-        clrflags(fx)
+        r15inc(&mut fx)
+        setDreg(&mut fx, t)
+        clrflags(&mut fx)
         return
     }
 
@@ -741,11 +741,11 @@ fn fxStepOne(fx: &mut Fx): void {
         fx.vOverflow = (sregVal(fx) ^ bRaw) & (sregVal(fx) ^ t) & 0x8000
         fx.vSign = t
         fx.vZero = t
-        r15inc(fx)
+        r15inc(&mut fx)
         if alt != 3 { // cmp discards the result
-            setDreg(fx, t)
+            setDreg(&mut fx, t)
         }
-        clrflags(fx)
+        clrflags(&mut fx)
         return
     }
 
@@ -753,8 +753,8 @@ fn fxStepOne(fx: &mut Fx): void {
     if op < 0x80 {
         if op == 0x70 { // merge
             let v = (fx.reg[7] & 0xFF00) | ((fx.reg[8] & 0xFF00) >> 8)
-            r15inc(fx)
-            setDreg(fx, v)
+            r15inc(&mut fx)
+            setDreg(&mut fx, v)
             fx.vOverflow = (v & 0xC0C0) << 16
             fx.vZero = if (v & 0xF0F0) != 0 { // Snes9x stores !(v&0xf0f0)
                 0
@@ -767,7 +767,7 @@ fn fxStepOne(fx: &mut Fx): void {
             } else {
                 0
             }
-            clrflags(fx)
+            clrflags(&mut fx)
         } else {
             let n = op & 0xF
             let s = sregVal(fx)
@@ -782,11 +782,11 @@ fn fxStepOne(fx: &mut Fx): void {
                 v = s & (~n)
             }
             v = v & 0xFFFFFFFF
-            r15inc(fx)
-            setDreg(fx, v)
+            r15inc(&mut fx)
+            setDreg(&mut fx, v)
             fx.vSign = v
             fx.vZero = v
-            clrflags(fx)
+            clrflags(&mut fx)
         }
         return
     }
@@ -806,32 +806,32 @@ fn fxStepOne(fx: &mut Fx): void {
             v = (s & 0xFF) * n
         }
         v = v & 0xFFFFFFFF
-        r15inc(fx)
-        setDreg(fx, v)
+        r15inc(&mut fx)
+        setDreg(&mut fx, v)
         fx.vSign = v
         fx.vZero = v
-        clrflags(fx)
+        clrflags(&mut fx)
         return
     }
 
     // 0x90-0x9f: sbk, link, sex, asr/div2, ror, jmp/ljmp, lob, fmult/lmult
     if op < 0xA0 {
         if op == 0x90 { // sbk
-            ramWrite(fx, fx.lastRamAdr, sregVal(fx))
-            ramWrite(fx, fx.lastRamAdr ^ 1, sregVal(fx) >> 8)
-            clrflags(fx)
-            r15inc(fx)
+            ramWrite(&mut fx, fx.lastRamAdr, sregVal(fx))
+            ramWrite(&mut fx, fx.lastRamAdr ^ 1, sregVal(fx) >> 8)
+            clrflags(&mut fx)
+            r15inc(&mut fx)
         } else if op >= 0x91 && op <= 0x94 { // link #n
             fx.reg[11] = (fx.reg[15] + (op & 0xF)) & 0xFFFFFFFF
-            clrflags(fx)
-            r15inc(fx)
+            clrflags(&mut fx)
+            r15inc(&mut fx)
         } else if op == 0x95 { // sex
             let v = (sex8(sregVal(fx))) & 0xFFFFFFFF
-            r15inc(fx)
-            setDreg(fx, v)
+            r15inc(&mut fx)
+            setDreg(&mut fx, v)
             fx.vSign = v
             fx.vZero = v
-            clrflags(fx)
+            clrflags(&mut fx)
         } else if op == 0x96 { // asr / div2
             let s = sregVal(fx)
             fx.vCarry = s & 1
@@ -846,20 +846,20 @@ fn fxStepOne(fx: &mut Fx): void {
             } else { // asr
                 v = ashr1(sex16(s)) & 0xFFFFFFFF
             }
-            r15inc(fx)
-            setDreg(fx, v)
+            r15inc(&mut fx)
+            setDreg(&mut fx, v)
             fx.vSign = v
             fx.vZero = v
-            clrflags(fx)
+            clrflags(&mut fx)
         } else if op == 0x97 { // ror
             let s = sregVal(fx)
             let v = ((s & 0xFFFF) >> 1) | (fx.vCarry << 15)
             fx.vCarry = s & 1
-            r15inc(fx)
-            setDreg(fx, v)
+            r15inc(&mut fx)
+            setDreg(&mut fx, v)
             fx.vSign = v
             fx.vZero = v
-            clrflags(fx)
+            clrflags(&mut fx)
         } else if op >= 0x98 && op <= 0x9D { // jmp / ljmp
             let n = op & 0xF
             if alt == 1 || alt == 3 { // ljmp: R15 = SREG (fx_cache's ++ and the -- cancel)
@@ -867,30 +867,30 @@ fn fxStepOne(fx: &mut Fx): void {
                 fx.reg[15] = sregVal(fx) & 0xFFFF
                 fx.cacheActive = true
                 fx.cbr = fx.reg[15] & 0xFFF0
-                clrflags(fx)
+                clrflags(&mut fx)
             } else { // jmp
                 fx.reg[15] = fx.reg[n] & 0xFFFF
-                clrflags(fx)
+                clrflags(&mut fx)
             }
         } else if op == 0x9E { // lob
             let v = sregVal(fx) & 0xFF
-            r15inc(fx)
-            setDreg(fx, v)
+            r15inc(&mut fx)
+            setDreg(&mut fx, v)
             fx.vSign = v << 8
             fx.vZero = v << 8
-            clrflags(fx)
+            clrflags(&mut fx)
         } else { // 0x9F fmult / lmult
             let c = (sex16(sregVal(fx)) * sex16(fx.reg[6])) & 0xFFFFFFFF
             let v = (c >> 16) & 0xFFFF
             if alt == 1 || alt == 3 { // lmult
                 fx.reg[4] = c
             }
-            r15inc(fx)
-            setDreg(fx, v)
+            r15inc(&mut fx)
+            setDreg(&mut fx, v)
             fx.vSign = v
             fx.vZero = v
             fx.vCarry = (c >> 15) & 1
-            clrflags(fx)
+            clrflags(&mut fx)
         }
         return
     }
@@ -900,37 +900,37 @@ fn fxStepOne(fx: &mut Fx): void {
         let n = op & 0xF
         if alt == 0 { // ibt rn, #pp
             let v = fx.pipe
-            r15inc(fx)
-            fetchPipe(fx)
-            r15inc(fx)
+            r15inc(&mut fx)
+            fetchPipe(&mut fx)
+            r15inc(&mut fx)
             fx.reg[n] = sex8(v) & 0xFFFFFFFF
             if n == 14 {
-                readR14(fx) // writing R14 (re)loads the ROM buffer (fx_ibt_r14)
+                readR14(&mut fx) // writing R14 (re)loads the ROM buffer (fx_ibt_r14)
             }
-            clrflags(fx)
+            clrflags(&mut fx)
         } else if alt == 2 { // sms (yy), rn
             let v = fx.reg[n]
             let adr = (fx.pipe << 1)
             fx.lastRamAdr = adr
-            r15inc(fx)
-            fetchPipe(fx)
-            ramWrite(fx, adr, v)
-            ramWrite(fx, adr + 1, v >> 8)
-            clrflags(fx)
-            r15inc(fx)
+            r15inc(&mut fx)
+            fetchPipe(&mut fx)
+            ramWrite(&mut fx, adr, v)
+            ramWrite(&mut fx, adr + 1, v >> 8)
+            clrflags(&mut fx)
+            r15inc(&mut fx)
         } else { // lms rn, (yy)  (alt1 and alt3)
             let adr = (fx.pipe << 1)
             fx.lastRamAdr = adr
-            r15inc(fx)
-            fetchPipe(fx)
-            r15inc(fx)
+            r15inc(&mut fx)
+            fetchPipe(&mut fx)
+            r15inc(&mut fx)
             var v = ramRead(fx, adr)
             v = v | (ramRead(fx, adr + 1) << 8)
             fx.reg[n] = v & 0xFFFFFFFF
             if n == 14 {
-                readR14(fx) // fx_lms_r14
+                readR14(&mut fx) // fx_lms_r14
             }
-            clrflags(fx)
+            clrflags(&mut fx)
         }
         return
     }
@@ -940,15 +940,15 @@ fn fxStepOne(fx: &mut Fx): void {
         let n = op & 0xF
         if fx.bflag {
             let v = fx.reg[n]
-            r15inc(fx)
-            setDreg(fx, v)
+            r15inc(&mut fx)
+            setDreg(&mut fx, v)
             fx.vOverflow = (v & 0x80) << 16
             fx.vSign = v
             fx.vZero = v
-            clrflags(fx)
+            clrflags(&mut fx)
         } else {
             fx.sreg = n
-            r15inc(fx)
+            r15inc(&mut fx)
         }
         return
     }
@@ -957,11 +957,11 @@ fn fxStepOne(fx: &mut Fx): void {
     if op < 0xD0 {
         if op == 0xC0 { // hib
             let v = (sregVal(fx) >> 8) & 0xFF
-            r15inc(fx)
-            setDreg(fx, v)
+            r15inc(&mut fx)
+            setDreg(&mut fx, v)
             fx.vSign = v << 8
             fx.vZero = v << 8
-            clrflags(fx)
+            clrflags(&mut fx)
         } else {
             let n = op & 0xF
             let s = sregVal(fx)
@@ -976,11 +976,11 @@ fn fxStepOne(fx: &mut Fx): void {
                 v = s ^ n
             }
             v = v & 0xFFFFFFFF
-            r15inc(fx)
-            setDreg(fx, v)
+            r15inc(&mut fx)
+            setDreg(&mut fx, v)
             fx.vSign = v
             fx.vZero = v
-            clrflags(fx)
+            clrflags(&mut fx)
         }
         return
     }
@@ -993,19 +993,19 @@ fn fxStepOne(fx: &mut Fx): void {
             fx.vSign = fx.reg[n]
             fx.vZero = fx.reg[n]
             if n == 14 {
-                readR14(fx) // fx_inc_r14 — the bytecode-VM dispatch relies on this
+                readR14(&mut fx) // fx_inc_r14 — the bytecode-VM dispatch relies on this
             }
-            clrflags(fx)
-            r15inc(fx)
+            clrflags(&mut fx)
+            r15inc(&mut fx)
         } else { // 0xdf
             if alt == 2 { // ramb
                 fx.rambr = sregVal(fx) % fx.nRamBanks
-                clrflags(fx)
-                r15inc(fx)
+                clrflags(&mut fx)
+                r15inc(&mut fx)
             } else if alt == 3 { // romb
                 fx.rombr = sregVal(fx) & 0x7F
-                clrflags(fx)
-                r15inc(fx)
+                clrflags(&mut fx)
+                r15inc(&mut fx)
             } else { // getc (alt0/alt1)
                 var c = fx.romBuffer & 0xFF
                 if (fx.por & 0x04) != 0 {
@@ -1016,8 +1016,8 @@ fn fxStepOne(fx: &mut Fx): void {
                 } else {
                     fx.color = c & 0xFF
                 }
-                clrflags(fx)
-                r15inc(fx)
+                clrflags(&mut fx)
+                r15inc(&mut fx)
             }
         }
         return
@@ -1031,10 +1031,10 @@ fn fxStepOne(fx: &mut Fx): void {
             fx.vSign = fx.reg[n]
             fx.vZero = fx.reg[n]
             if n == 14 {
-                readR14(fx) // fx_dec_r14
+                readR14(&mut fx) // fx_dec_r14
             }
-            clrflags(fx)
-            r15inc(fx)
+            clrflags(&mut fx)
+            r15inc(&mut fx)
         } else { // 0xef getb*
             let rb = fx.romBuffer & 0xFF
             var v: i64 = 0
@@ -1047,9 +1047,9 @@ fn fxStepOne(fx: &mut Fx): void {
             } else { // getb
                 v = rb
             }
-            r15inc(fx)
-            setDreg(fx, v)
-            clrflags(fx)
+            r15inc(&mut fx)
+            setDreg(&mut fx, v)
+            clrflags(&mut fx)
         }
         return
     }
@@ -1058,46 +1058,46 @@ fn fxStepOne(fx: &mut Fx): void {
     let n = op & 0xF
     if alt == 0 { // iwt rn, #xx
         let lo = fx.pipe
-        r15inc(fx)
-        fetchPipe(fx)
-        r15inc(fx)
+        r15inc(&mut fx)
+        fetchPipe(&mut fx)
+        r15inc(&mut fx)
         let hi = fx.pipe
-        fetchPipe(fx)
-        r15inc(fx)
+        fetchPipe(&mut fx)
+        r15inc(&mut fx)
         fx.reg[n] = (lo | (hi << 8)) & 0xFFFFFFFF
         if n == 14 {
-            readR14(fx) // fx_iwt_r14
+            readR14(&mut fx) // fx_iwt_r14
         }
-        clrflags(fx)
+        clrflags(&mut fx)
     } else if alt == 2 { // sm (xx), rn
         let v = fx.reg[n]
         var adr = fx.pipe
-        r15inc(fx)
-        fetchPipe(fx)
-        r15inc(fx)
+        r15inc(&mut fx)
+        fetchPipe(&mut fx)
+        r15inc(&mut fx)
         adr = adr | (fx.pipe << 8)
-        fetchPipe(fx)
+        fetchPipe(&mut fx)
         fx.lastRamAdr = adr
-        ramWrite(fx, adr, v)
-        ramWrite(fx, adr ^ 1, v >> 8)
-        clrflags(fx)
-        r15inc(fx)
+        ramWrite(&mut fx, adr, v)
+        ramWrite(&mut fx, adr ^ 1, v >> 8)
+        clrflags(&mut fx)
+        r15inc(&mut fx)
     } else { // lm rn, (xx)  (alt1 and alt3)
         var adr = fx.pipe
-        r15inc(fx)
-        fetchPipe(fx)
-        r15inc(fx)
+        r15inc(&mut fx)
+        fetchPipe(&mut fx)
+        r15inc(&mut fx)
         adr = adr | (fx.pipe << 8)
-        fetchPipe(fx)
-        r15inc(fx)
+        fetchPipe(&mut fx)
+        r15inc(&mut fx)
         fx.lastRamAdr = adr
         var v = ramRead(fx, adr)
         v = v | (ramRead(fx, adr ^ 1) << 8)
         fx.reg[n] = v & 0xFFFFFFFF
         if n == 14 {
-            readR14(fx) // fx_lm_r14
+            readR14(&mut fx) // fx_lm_r14
         }
-        clrflags(fx)
+        clrflags(&mut fx)
     }
 }
 
@@ -1107,10 +1107,10 @@ pub fn fxRun(fx: &mut Fx, maxSteps: i64): i64 {
     if !fx.running {
         return 0
     }
-    fxUpdateScreen(fx)
+    fxUpdateScreen(&mut fx)
     var i: i64 = 0
     while i < maxSteps && fx.running {
-        fxStepOne(fx)
+        fxStepOne(&mut fx)
         i = i + 1
     }
     fxDbgSteps = fxDbgSteps + i
@@ -1225,7 +1225,7 @@ pub fn fxRegWrite(fx: &mut Fx, addr: i64, v: i64): void {
             fx.reg[i] = (fx.reg[i] & 0xFFFF00FF) | (val << 8)
         }
         if addr == 0x301F {
-            fxStart(fx) // writing R15 high starts the GSU
+            fxStart(&mut fx) // writing R15 high starts the GSU
         }
         return
     }
@@ -1248,7 +1248,7 @@ pub fn fxRegWrite(fx: &mut Fx, addr: i64, v: i64): void {
             0
         }
         if (val & 0x20) != 0 {
-            fxStart(fx)
+            fxStart(&mut fx)
         } else {
             fx.running = false
             fx.cacheActive = false
@@ -1276,7 +1276,7 @@ pub fn fxRegWrite(fx: &mut Fx, addr: i64, v: i64): void {
     }
     if addr == 0x3038 {
         fx.scbr = val
-        fxUpdateScreen(fx)
+        fxUpdateScreen(&mut fx)
         return
     }
     if addr == 0x3039 {
@@ -1285,7 +1285,7 @@ pub fn fxRegWrite(fx: &mut Fx, addr: i64, v: i64): void {
     }
     if addr == 0x303A {
         fx.scmr = val
-        fxUpdateScreen(fx)
+        fxUpdateScreen(&mut fx)
         return
     }
     if addr == 0x303C {
@@ -1337,7 +1337,7 @@ pub fn fxTestRun(program: &Vec<u8>, seed: &Vec<i64>, carry: i64, steps: i64): Ve
     fx.running = true
     var n: i64 = 0
     while n < steps && fx.running {
-        fxStepOne(fx)
+        fxStepOne(&mut fx)
         n = n + 1
     }
     var out: Vec<i64> = Vec.new()

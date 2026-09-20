@@ -18,38 +18,38 @@ fn hex6(v: i64): string {
 }
 
 fn vword(p: &mut Ppu, w: i64): void {
-    ppuRegWrite(p, 0x18, w & 0xFF) // VMDATAL
-    ppuRegWrite(p, 0x19, (w >> 8) & 0xFF) // VMDATAH (increments vmaddr)
+    ppuRegWrite(&mut p, 0x18, w & 0xFF) // VMDATAL
+    ppuRegWrite(&mut p, 0x19, (w >> 8) & 0xFF) // VMDATAH (increments vmaddr)
 }
 
 fn main(): i32 {
     var p = newPpu()
-    ppuRegWrite(p, 0x00, 0x0F) // INIDISP: full brightness, no force-blank
-    ppuRegWrite(p, 0x01, 0x03) // OBSEL: OBJ char base -> empty VRAM (no sprites)
-    ppuRegWrite(p, 0x05, 0x01) // BGMODE 1
-    ppuRegWrite(p, 0x07, 0x04) // BG1SC: tilemap base word $0400
-    ppuRegWrite(p, 0x0B, 0x00) // BG12NBA: BG1 char base word 0
-    ppuRegWrite(p, 0x15, 0x80) // VMAIN: +1 word, increment on high-byte write
+    ppuRegWrite(&mut p, 0x00, 0x0F) // INIDISP: full brightness, no force-blank
+    ppuRegWrite(&mut p, 0x01, 0x03) // OBSEL: OBJ char base -> empty VRAM (no sprites)
+    ppuRegWrite(&mut p, 0x05, 0x01) // BGMODE 1
+    ppuRegWrite(&mut p, 0x07, 0x04) // BG1SC: tilemap base word $0400
+    ppuRegWrite(&mut p, 0x0B, 0x00) // BG12NBA: BG1 char base word 0
+    ppuRegWrite(&mut p, 0x15, 0x80) // VMAIN: +1 word, increment on high-byte write
 
     // Tile 0 at char base 0: every pixel = palette index 1 (plane0 all set).
-    ppuRegWrite(p, 0x16, 0x00)
-    ppuRegWrite(p, 0x17, 0x00) // VMADDR = 0
+    ppuRegWrite(&mut p, 0x16, 0x00)
+    ppuRegWrite(&mut p, 0x17, 0x00) // VMADDR = 0
     var r: i64 = 0
     while r < 8 {
-        vword(p, 0x00FF)
+        vword(&mut p, 0x00FF)
         r = r + 1
     } // rows 0-7: plane0=$FF, plane1=0
     r = 0
     while r < 8 {
-        vword(p, 0x0000)
+        vword(&mut p, 0x0000)
         r = r + 1
     } // planes 2/3 = 0
 
     // Tilemap ($0400) stays all-zero = tile 0, palette 0 everywhere.
     // CGRAM color 1 = red (BGR555 $001F); color 0 = black backdrop.
-    ppuRegWrite(p, 0x21, 0x01) // CGADD = 1
-    ppuRegWrite(p, 0x22, 0x1F)
-    ppuRegWrite(p, 0x22, 0x00) // color 1 low/high
+    ppuRegWrite(&mut p, 0x21, 0x01) // CGADD = 1
+    ppuRegWrite(&mut p, 0x22, 0x1F)
+    ppuRegWrite(&mut p, 0x22, 0x00) // color 1 low/high
 
     var fb: Vec<i64> = Vec.new()
     var i: i64 = 0
@@ -57,7 +57,7 @@ fn main(): i32 {
         fb.push(0)
         i = i + 1
     }
-    renderFrame(p, fb)
+    renderFrame(p, &mut fb)
 
     let a = fb[0]
     let b = fb[100 * 256 + 128]

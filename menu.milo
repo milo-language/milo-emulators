@@ -66,7 +66,7 @@ fn main(): i32 {
 
     var rows: Vec<Row> = []
     var sel: Vec<i64> = [] // indices into rows that are selectable ROMs
-    buildRows(rows, sel)
+    buildRows(&mut rows, &mut sel)
 
     if SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER) != 0 {
         print("SDL_Init failed")
@@ -216,7 +216,7 @@ fn main(): i32 {
                 }
             }
 
-            render(fb, rows, selRow, scrollTop, visN, font, glyphs)
+            render(&mut fb, rows, selRow, scrollTop, visN, font, glyphs)
             SDL_UpdateTexture(tex, 0 as *u8, fb[0].addrOf() as *u8, (MENU_W * 4) as i32)
             SDL_RenderClear(ren)
             SDL_RenderCopy(ren, tex, 0 as *u8, 0 as *u8)

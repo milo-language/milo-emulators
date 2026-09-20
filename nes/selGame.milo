@@ -49,22 +49,22 @@ fn runFrame(cpu: &mut Cpu, bus: &mut Bus, buttons: u8): void {
     let startFrame = bus.ppu.frame
     while bus.ppu.frame == startFrame {
         let before = cpu.cyc
-        step(cpu, bus)
+        step(&mut cpu, &mut bus)
         let used = cpu.cyc - before
         var k: i64 = 0
         while k < used * 3 {
-            clockPpu(bus)
+            clockPpu(&mut bus)
             k = k + 1
         }
-        clockApu(bus, used)
-        serviceInterrupts(cpu, bus)
+        clockApu(&mut bus, used)
+        serviceInterrupts(&mut cpu, &mut bus)
     }
 }
 
 fn hold(cpu: &mut Cpu, bus: &mut Bus, btn: u8, n: i64): void {
     var f: i64 = 0
     while f < n {
-        runFrame(cpu, bus, btn)
+        runFrame(&mut cpu, &mut bus, btn)
         f = f + 1
     }
 }
@@ -80,9 +80,9 @@ fn main(): i32 {
             let selN = strToInt(argv[2])
             let after = strToInt(argv[3])
             var bus = newBus(cart)
-            var cpu = newCpuReset(bus)
+            var cpu = newCpuReset(&mut bus)
 
-            hold(cpu, bus, 0, 60) // menu settle
+            hold(&mut cpu, &mut bus, 0, 60) // menu settle
 
             // Move the line cursor with D-pad taps: selN>0 = DOWN, selN<0 = UP.
             // (SELECT paginates by 20; the D-pad moves within a page.)
@@ -98,18 +98,18 @@ fn main(): i32 {
             }
             var s: i64 = 0
             while s < steps {
-                hold(cpu, bus, dir, 4)
-                hold(cpu, bus, 0, 4)
+                hold(&mut cpu, &mut bus, dir, 4)
+                hold(&mut cpu, &mut bus, 0, 4)
                 s = s + 1
             }
 
             // after < 0: menu-calibration mode — render the cursor without launching.
             if after >= 0 {
-                hold(cpu, bus, START, 6) // launch
-                hold(cpu, bus, 0, after) // let it run
+                hold(&mut cpu, &mut bus, START, 6) // launch
+                hold(&mut cpu, &mut bus, 0, after) // let it run
             }
 
-            renderFrame(bus.ppu)
+            renderFrame(&mut bus.ppu)
             print("sel=" + hex4(selN) + " pc=" + hex4(cpu.pc as i64))
 
             var data: string = ""

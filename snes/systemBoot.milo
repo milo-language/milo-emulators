@@ -31,8 +31,8 @@ fn main(): i32 {
     var done = false
     var n: i64 = 0
     while n < 20000 {
-        step(cpu, m)
-        runApu(m, 8) // co-run the SPC ~8 instructions per main step
+        step(&mut cpu, &mut m)
+        runApu(&mut m, 8) // co-run the SPC ~8 instructions per main step
         if memRead(m, 0x000000) == 0x42 {
             done = true break
         }

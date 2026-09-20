@@ -214,7 +214,7 @@ pub fn runApu(m: &mut Mem, n: i64): void {
     }
     var i: i64 = 0
     while i < n {
-        spcStep(m.apuSpc, m.apuMem)
+        spcStep(&mut m.apuSpc, &mut m.apuMem)
         i = i + 1
     }
 }
@@ -292,18 +292,18 @@ fn runDMA(m: &mut Mem, channels: i64): void {
                 let aFull = (abank << 16) | (aaddr & 0xFFFF)
                 if dir == 0 {
                     let v = memRead(m, aFull)
-                    memWrite(m, bAddr, v)
+                    memWrite(&mut m, bAddr, v)
                 } else {
                     let v = memRead(m, bAddr)
-                    memWrite(m, aFull, v)
+                    memWrite(&mut m, aFull, v)
                 }
                 aaddr = (aaddr + astep) & 0xFFFF
                 count = count + 1
             }
-            setScratch(m, base + 2, aaddr & 0xFF)
-            setScratch(m, base + 3, (aaddr >> 8) & 0xFF)
-            setScratch(m, base + 5, 0)
-            setScratch(m, base + 6, 0)
+            setScratch(&mut m, base + 2, aaddr & 0xFF)
+            setScratch(&mut m, base + 3, (aaddr >> 8) & 0xFF)
+            setScratch(&mut m, base + 5, 0)
+            setScratch(&mut m, base + 6, 0)
         }
         ch = ch + 1
     }
@@ -485,7 +485,7 @@ fn hdmaWalkFrame(m: &mut Mem): void {
                                 v = memRead(m, (a2b[ch] << 16) | a2a[ch])
                                 a2a[ch] = (a2a[ch] + 1) & 0xFFFF
                             }
-                            hdmaApplyReg(m, line, reg, v)
+                            hdmaApplyReg(&mut m, line, reg, v)
                             j = j + 1
                         }
                     }
@@ -603,16 +603,16 @@ fn mmioRead(m: &Mem, off: i64): i64 {
 // CPU-side MMIO write ($2000-$5FFF). Writing $4203/$4206 latches mul/div results.
 fn mmioWrite(m: &mut Mem, off: i64, val: i64): void {
     if off >= 0x2100 && off <= 0x213F {
-        ppuRegWrite(m.ppu, off - 0x2100, val)
+        ppuRegWrite(&mut m.ppu, off - 0x2100, val)
         return // PPU registers
     }
     if off >= 0x2140 && off <= 0x2143 {
-        apuWritePort(m.apuMem, off - 0x2140, val)
+        apuWritePort(&mut m.apuMem, off - 0x2140, val)
         return // APU ports $2140-$2143
     }
     if off == 0x420B {
         m.mmio[off - 0x2000] = (val & 0xFF) as u8
-        runDMA(m, val)
+        runDMA(&mut m, val)
         return // MDMAEN: start general-purpose DMA on set channels
     }
     if off == 0x2180 { // WMDATA: write WRAM at the auto-incrementing address
@@ -844,7 +844,7 @@ pub fn memWrite(m: &mut Mem, a: i64, v: i64): void {
         let b7 = bank & 0x7F
         if b7 <= 0x3F {
             if off >= 0x3000 && off <= 0x34FF {
-                fxRegWrite(m.fx, off, v)
+                fxRegWrite(&mut m.fx, off, v)
                 return
             }
             if off >= 0x6000 && off <= 0x7FFF {
@@ -873,7 +873,7 @@ pub fn memWrite(m: &mut Mem, a: i64, v: i64): void {
             return
         }
         if off < 0x6000 {
-            mmioWrite(m, off, v)
+            mmioWrite(&mut m, off, v)
             return
         }
         return // unused/ROM writes ignored
@@ -896,18 +896,18 @@ pub fn newCpuReset(m: &Mem): Cpu {
 // $FFEA (native) / $FFFA (emulation). Cleared D + set I like a hardware IRQ.
 fn nmi(cpu: &mut Cpu, m: &mut Mem): void {
     if cpu.e == 0 {
-        push8(cpu, m, cpu.pbr)
-        push16(cpu, m, cpu.pc)
-        push8(cpu, m, cpu.p)
-        setBit(cpu, FI, true)
-        setBit(cpu, FD, false)
+        push8(&mut cpu, &mut m, cpu.pbr)
+        push16(&mut cpu, &mut m, cpu.pc)
+        push8(&mut cpu, &mut m, cpu.p)
+        setBit(&mut cpu, FI, true)
+        setBit(&mut cpu, FD, false)
         cpu.pbr = 0
         cpu.pc = memRead(m, 0xFFEA) | (memRead(m, 0xFFEB) << 8)
     } else {
-        push16(cpu, m, cpu.pc)
-        push8(cpu, m, cpu.p & (~0x10)) // hardware interrupt pushes break (bit4) clear
-        setBit(cpu, FI, true)
-        setBit(cpu, FD, false)
+        push16(&mut cpu, &mut m, cpu.pc)
+        push8(&mut cpu, &mut m, cpu.p & (~0x10)) // hardware interrupt pushes break (bit4) clear
+        setBit(&mut cpu, FI, true)
+        setBit(&mut cpu, FD, false)
         cpu.pbr = 0
         cpu.pc = memRead(m, 0xFFFA) | (memRead(m, 0xFFFB) << 8)
     }
@@ -917,18 +917,18 @@ fn nmi(cpu: &mut Cpu, m: &mut Mem): void {
 // (emulation). Only taken when the I flag is clear.
 fn irq(cpu: &mut Cpu, m: &mut Mem): void {
     if cpu.e == 0 {
-        push8(cpu, m, cpu.pbr)
-        push16(cpu, m, cpu.pc)
-        push8(cpu, m, cpu.p)
-        setBit(cpu, FI, true)
-        setBit(cpu, FD, false)
+        push8(&mut cpu, &mut m, cpu.pbr)
+        push16(&mut cpu, &mut m, cpu.pc)
+        push8(&mut cpu, &mut m, cpu.p)
+        setBit(&mut cpu, FI, true)
+        setBit(&mut cpu, FD, false)
         cpu.pbr = 0
         cpu.pc = memRead(m, 0xFFEE) | (memRead(m, 0xFFEF) << 8)
     } else {
-        push16(cpu, m, cpu.pc)
-        push8(cpu, m, cpu.p & (~0x10))
-        setBit(cpu, FI, true)
-        setBit(cpu, FD, false)
+        push16(&mut cpu, &mut m, cpu.pc)
+        push8(&mut cpu, &mut m, cpu.p & (~0x10))
+        setBit(&mut cpu, FI, true)
+        setBit(&mut cpu, FD, false)
         cpu.pbr = 0
         cpu.pc = memRead(m, 0xFFFE) | (memRead(m, 0xFFFF) << 8)
     }
@@ -943,7 +943,7 @@ fn maybeIrq(cpu: &mut Cpu, m: &mut Mem): void {
     }
     m.timeup = 0x80
     if (cpu.p & FI) == 0 {
-        irq(cpu, m)
+        irq(&mut cpu, &mut m)
     }
 }
 
@@ -971,11 +971,11 @@ fn runFxAndIrq(cpu: &mut Cpu, m: &mut Mem): void {
         if burst > fxFrameBudget {
             burst = fxFrameBudget
         }
-        let ran = fxRun(m.fx, burst)
+        let ran = fxRun(&mut m.fx, burst)
         fxFrameBudget = fxFrameBudget - ran
     }
     if m.fx.irqPending && (cpu.p & FI) == 0 {
-        irq(cpu, m)
+        irq(&mut cpu, &mut m)
     }
 }
 
@@ -1012,15 +1012,15 @@ pub fn stepFrame(cpu: &mut Cpu, m: &mut Mem): void {
     var i: i64 = 0
     while i < activeSteps {
         if !fired && irqAt >= 0 && i >= irqAt {
-            maybeIrq(cpu, m)
+            maybeIrq(&mut cpu, &mut m)
             fired = true
         }
         m.scanline = (i * 224) / activeSteps // 0-223 during active display
-        step(cpu, m)
+        step(&mut cpu, &mut m)
         if (i & 3) == 0 {
-            runApu(m, 2)
+            runApu(&mut m, 2)
         }
-        runFxAndIrq(cpu, m)
+        runFxAndIrq(&mut cpu, &mut m)
         // The game reached its vblank-wait (WAI). Stop early and fire NMI from here
         // (DBR=$80) instead of running the budget out mid-routine. Keeps NMI off the
         // heavy load/decompress paths that run with a different data bank. But keep
@@ -1036,20 +1036,20 @@ pub fn stepFrame(cpu: &mut Cpu, m: &mut Mem): void {
     // Tables set up during (this frame's) active display are now stable; walk the
     // armed HDMA channels to produce the per-scanline PPU-register overrides the
     // renderer consumes (gradient skies, brightness fades).
-    hdmaWalkFrame(m)
+    hdmaWalkFrame(&mut m)
     m.vblankToggle = 0x80
-    ppuVblankOamReload(m.ppu) // hardware reloads OAMADDR from $2102/3 at vblank start
+    ppuVblankOamReload(&mut m.ppu) // hardware reloads OAMADDR from $2102/3 at vblank start
     if (m.nmitimen & 0x80) != 0 {
-        nmi(cpu, m)
+        nmi(&mut cpu, &mut m)
     }
     i = 0
     while i < vblankSteps {
         m.scanline = 224 + (i * 38) / vblankSteps // 224-261 during vblank
-        step(cpu, m)
+        step(&mut cpu, &mut m)
         if (i & 3) == 0 {
-            runApu(m, 2)
+            runApu(&mut m, 2)
         }
-        runFxAndIrq(cpu, m)
+        runFxAndIrq(&mut cpu, &mut m)
         i = i + 1
     }
     m.vblankToggle = 0
@@ -1073,30 +1073,30 @@ fn setBit(cpu: &mut Cpu, mask: i64, on: bool): void {
 }
 
 fn setNZ8(cpu: &mut Cpu, v: i64): void {
-    setBit(cpu, FZ, (v & 0xFF) == 0)
-    setBit(cpu, FN, (v & 0x80) != 0)
+    setBit(&mut cpu, FZ, (v & 0xFF) == 0)
+    setBit(&mut cpu, FN, (v & 0x80) != 0)
 }
 
 fn setNZ16(cpu: &mut Cpu, v: i64): void {
-    setBit(cpu, FZ, (v & 0xFFFF) == 0)
-    setBit(cpu, FN, (v & 0x8000) != 0)
+    setBit(&mut cpu, FZ, (v & 0xFFFF) == 0)
+    setBit(&mut cpu, FN, (v & 0x8000) != 0)
 }
 
 // N/Z for a value in the accumulator's current width.
 fn setNZa(cpu: &mut Cpu, v: i64): void {
     if m8(cpu) {
-        setNZ8(cpu, v)
+        setNZ8(&mut cpu, v)
     } else {
-        setNZ16(cpu, v)
+        setNZ16(&mut cpu, v)
     }
 }
 
 // N/Z for a value in the index registers' current width.
 fn setNZx(cpu: &mut Cpu, v: i64): void {
     if x8(cpu) {
-        setNZ8(cpu, v)
+        setNZ8(&mut cpu, v)
     } else {
-        setNZ16(cpu, v)
+        setNZ16(&mut cpu, v)
     }
 }
 
@@ -1135,30 +1135,30 @@ fn spInc(cpu: &mut Cpu): void {
 }
 
 fn push8(cpu: &mut Cpu, m: &mut Mem, v: i64): void {
-    memWrite(m, cpu.s, v & 0xFF)
-    spDec(cpu)
+    memWrite(&mut m, cpu.s, v & 0xFF)
+    spDec(&mut cpu)
 }
 
 fn pull8(cpu: &mut Cpu, m: &mut Mem): i64 {
-    spInc(cpu)
+    spInc(&mut cpu)
     return memRead(m, cpu.s)
 }
 
 // 16-bit push writes high byte first, so the low byte lands at the lower address.
 fn push16(cpu: &mut Cpu, m: &mut Mem, v: i64): void {
-    push8(cpu, m, (v >> 8) & 0xFF)
-    push8(cpu, m, v & 0xFF)
+    push8(&mut cpu, &mut m, (v >> 8) & 0xFF)
+    push8(&mut cpu, &mut m, v & 0xFF)
 }
 
 fn pull16(cpu: &mut Cpu, m: &mut Mem): i64 {
-    let lo = pull8(cpu, m)
-    let hi = pull8(cpu, m)
+    let lo = pull8(&mut cpu, &mut m)
+    let hi = pull8(&mut cpu, &mut m)
     return lo | (hi << 8)
 }
 
 fn fetch16(cpu: &mut Cpu, m: &Mem): i64 {
-    let lo = fetch8(cpu, m)
-    let hi = fetch8(cpu, m)
+    let lo = fetch8(&mut cpu, m)
+    let hi = fetch8(&mut cpu, m)
     return lo | (hi << 8)
 }
 
@@ -1166,7 +1166,7 @@ fn fetch16(cpu: &mut Cpu, m: &Mem): i64 {
 // full 16-bit stack pointer even in emulation — the byte accesses can leave page
 // 1 — and only clamp SH back to 01 once the instruction finishes.
 fn push8f(cpu: &mut Cpu, m: &mut Mem, v: i64): void {
-    memWrite(m, cpu.s, v & 0xFF)
+    memWrite(&mut m, cpu.s, v & 0xFF)
     cpu.s = (cpu.s - 1) & 0xFFFF
 }
 
@@ -1176,13 +1176,13 @@ fn pull8f(cpu: &mut Cpu, m: &mut Mem): i64 {
 }
 
 fn push16f(cpu: &mut Cpu, m: &mut Mem, v: i64): void {
-    push8f(cpu, m, (v >> 8) & 0xFF)
-    push8f(cpu, m, v & 0xFF)
+    push8f(&mut cpu, &mut m, (v >> 8) & 0xFF)
+    push8f(&mut cpu, &mut m, v & 0xFF)
 }
 
 fn pull16f(cpu: &mut Cpu, m: &mut Mem): i64 {
-    let lo = pull8f(cpu, m)
-    let hi = pull8f(cpu, m)
+    let lo = pull8f(&mut cpu, &mut m)
+    let hi = pull8f(&mut cpu, &mut m)
     return lo | (hi << 8)
 }
 
@@ -1193,9 +1193,9 @@ fn clampEmuStack(cpu: &mut Cpu): void {
 }
 
 fn fetch24(cpu: &mut Cpu, m: &Mem): i64 {
-    let lo = fetch8(cpu, m)
-    let mid = fetch8(cpu, m)
-    let hi = fetch8(cpu, m)
+    let lo = fetch8(&mut cpu, m)
+    let mid = fetch8(&mut cpu, m)
+    let hi = fetch8(&mut cpu, m)
     return lo | (mid << 8) | (hi << 16)
 }
 
@@ -1203,7 +1203,7 @@ fn fetch24(cpu: &mut Cpu, m: &Mem): i64 {
 // Direct-page modes live in bank 0 and wrap within it; DBR-relative and long
 // modes are linear 24-bit.
 fn aDp(cpu: &mut Cpu, m: &Mem): i64 {
-    return (cpu.d + fetch8(cpu, m)) & 0xFFFF
+    return (cpu.d + fetch8(&mut cpu, m)) & 0xFFFF
 }
 
 // Direct-page indexed base. Emulation quirk: when DL (D low byte) is 0 the index
@@ -1216,31 +1216,31 @@ fn dpIndexed(cpu: &Cpu, dp: i64, idx: i64): i64 {
 }
 
 fn aDpX(cpu: &mut Cpu, m: &Mem): i64 {
-    return dpIndexed(cpu, fetch8(cpu, m), cpu.x)
+    return dpIndexed(cpu, fetch8(&mut cpu, m), cpu.x)
 }
 
 fn aDpY(cpu: &mut Cpu, m: &Mem): i64 {
-    return dpIndexed(cpu, fetch8(cpu, m), cpu.y)
+    return dpIndexed(cpu, fetch8(&mut cpu, m), cpu.y)
 }
 
 fn aAbs(cpu: &mut Cpu, m: &Mem): i64 {
-    return (cpu.dbr << 16) | fetch16(cpu, m)
+    return (cpu.dbr << 16) | fetch16(&mut cpu, m)
 }
 
 fn aAbsX(cpu: &mut Cpu, m: &Mem): i64 {
-    return (((cpu.dbr << 16) | fetch16(cpu, m)) + cpu.x) & 0xFFFFFF
+    return (((cpu.dbr << 16) | fetch16(&mut cpu, m)) + cpu.x) & 0xFFFFFF
 }
 
 fn aAbsY(cpu: &mut Cpu, m: &Mem): i64 {
-    return (((cpu.dbr << 16) | fetch16(cpu, m)) + cpu.y) & 0xFFFFFF
+    return (((cpu.dbr << 16) | fetch16(&mut cpu, m)) + cpu.y) & 0xFFFFFF
 }
 
 fn aLong(cpu: &mut Cpu, m: &Mem): i64 {
-    return fetch24(cpu, m)
+    return fetch24(&mut cpu, m)
 }
 
 fn aLongX(cpu: &mut Cpu, m: &Mem): i64 {
-    return (fetch24(cpu, m) + cpu.x) & 0xFFFFFF
+    return (fetch24(&mut cpu, m) + cpu.x) & 0xFFFFFF
 }
 
 // Read a 16-/24-bit pointer from bank 0 (direct-page/stack pointer storage),
@@ -1259,34 +1259,34 @@ fn readPtr24(m: &Mem, addr: i64): i64 {
 }
 
 fn aDpIndX(cpu: &mut Cpu, m: &Mem): i64 { // (dp,X)
-    let ptr = readPtr16(m, dpIndexed(cpu, fetch8(cpu, m), cpu.x))
+    let ptr = readPtr16(m, dpIndexed(cpu, fetch8(&mut cpu, m), cpu.x))
     return (cpu.dbr << 16) | ptr
 }
 
 fn aDpIndY(cpu: &mut Cpu, m: &Mem): i64 { // (dp),Y
-    let ptr = readPtr16(m, (cpu.d + fetch8(cpu, m)) & 0xFFFF)
+    let ptr = readPtr16(m, (cpu.d + fetch8(&mut cpu, m)) & 0xFFFF)
     return (((cpu.dbr << 16) | ptr) + cpu.y) & 0xFFFFFF
 }
 
 fn aDpInd(cpu: &mut Cpu, m: &Mem): i64 { // (dp)
-    let ptr = readPtr16(m, (cpu.d + fetch8(cpu, m)) & 0xFFFF)
+    let ptr = readPtr16(m, (cpu.d + fetch8(&mut cpu, m)) & 0xFFFF)
     return ((cpu.dbr << 16) | ptr) & 0xFFFFFF
 }
 
 fn aDpLong(cpu: &mut Cpu, m: &Mem): i64 { // [dp]
-    return readPtr24(m, (cpu.d + fetch8(cpu, m)) & 0xFFFF)
+    return readPtr24(m, (cpu.d + fetch8(&mut cpu, m)) & 0xFFFF)
 }
 
 fn aDpLongY(cpu: &mut Cpu, m: &Mem): i64 { // [dp],Y
-    return (readPtr24(m, (cpu.d + fetch8(cpu, m)) & 0xFFFF) + cpu.y) & 0xFFFFFF
+    return (readPtr24(m, (cpu.d + fetch8(&mut cpu, m)) & 0xFFFF) + cpu.y) & 0xFFFFFF
 }
 
 fn aSr(cpu: &mut Cpu, m: &Mem): i64 { // sr,S — bank 0
-    return (cpu.s + fetch8(cpu, m)) & 0xFFFF
+    return (cpu.s + fetch8(&mut cpu, m)) & 0xFFFF
 }
 
 fn aSrY(cpu: &mut Cpu, m: &Mem): i64 { // (sr,S),Y
-    let ptr = readPtr16(m, (cpu.s + fetch8(cpu, m)) & 0xFFFF)
+    let ptr = readPtr16(m, (cpu.s + fetch8(&mut cpu, m)) & 0xFFFF)
     return (((cpu.dbr << 16) | ptr) + cpu.y) & 0xFFFFFF
 }
 
@@ -1304,21 +1304,21 @@ fn read16w(m: &Mem, addr: i64, bank0wrap: bool): i64 {
 }
 
 fn write16w(m: &mut Mem, addr: i64, v: i64, bank0wrap: bool): void {
-    memWrite(m, addr, v & 0xFF)
+    memWrite(&mut m, addr, v & 0xFF)
     let hiAddr = if bank0wrap {
         (addr & 0xFF0000) | ((addr + 1) & 0xFFFF)
     } else {
         (addr + 1) & 0xFFFFFF
     }
-    memWrite(m, hiAddr, (v >> 8) & 0xFF)
+    memWrite(&mut m, hiAddr, (v >> 8) & 0xFF)
 }
 
 // Store accumulator to a resolved address at the current width.
 fn staTo(cpu: &Cpu, m: &mut Mem, addr: i64, bank0wrap: bool): void {
     if m8(cpu) {
-        memWrite(m, addr, cpu.a & 0xFF)
+        memWrite(&mut m, addr, cpu.a & 0xFF)
     } else {
-        write16w(m, addr, cpu.a, bank0wrap)
+        write16w(&mut m, addr, cpu.a, bank0wrap)
     }
 }
 
@@ -1327,11 +1327,11 @@ fn ldaFrom(cpu: &mut Cpu, m: &Mem, addr: i64, bank0wrap: bool): void {
     if m8(cpu) {
         let v = memRead(m, addr)
         cpu.a = (cpu.a & 0xFF00) | v
-        setNZ8(cpu, v)
+        setNZ8(&mut cpu, v)
     } else {
         let v = read16w(m, addr, bank0wrap)
         cpu.a = v
-        setNZ16(cpu, v)
+        setNZ16(&mut cpu, v)
     }
 }
 
@@ -1352,46 +1352,46 @@ fn readXval(cpu: &Cpu, m: &Mem, addr: i64, bank0wrap: bool): i64 {
 
 fn immM(cpu: &mut Cpu, m: &Mem): i64 {
     if m8(cpu) {
-        return fetch8(cpu, m)
+        return fetch8(&mut cpu, m)
     }
-    return fetch16(cpu, m)
+    return fetch16(&mut cpu, m)
 }
 
 fn immX(cpu: &mut Cpu, m: &Mem): i64 {
     if x8(cpu) {
-        return fetch8(cpu, m)
+        return fetch8(&mut cpu, m)
     }
-    return fetch16(cpu, m)
+    return fetch16(&mut cpu, m)
 }
 
 // Write a result into A at accumulator width (high byte preserved when 8-bit).
 fn setA(cpu: &mut Cpu, r: i64): void {
     if m8(cpu) {
         cpu.a = (cpu.a & 0xFF00) | (r & 0xFF)
-        setNZ8(cpu, r)
+        setNZ8(&mut cpu, r)
     } else {
         cpu.a = r & 0xFFFF
-        setNZ16(cpu, r)
+        setNZ16(&mut cpu, r)
     }
 }
 
 fn setXreg(cpu: &mut Cpu, r: i64): void {
     if x8(cpu) {
         cpu.x = r & 0xFF
-        setNZ8(cpu, r)
+        setNZ8(&mut cpu, r)
     } else {
         cpu.x = r & 0xFFFF
-        setNZ16(cpu, r)
+        setNZ16(&mut cpu, r)
     }
 }
 
 fn setYreg(cpu: &mut Cpu, r: i64): void {
     if x8(cpu) {
         cpu.y = r & 0xFF
-        setNZ8(cpu, r)
+        setNZ8(&mut cpu, r)
     } else {
         cpu.y = r & 0xFFFF
-        setNZ16(cpu, r)
+        setNZ16(&mut cpu, r)
     }
 }
 
@@ -1409,74 +1409,74 @@ fn compareVals(cpu: &mut Cpu, reg: i64, v: i64, wide: bool): void {
     }
     let a = reg & mask
     let b = v & mask
-    setBit(cpu, FC, a >= b)
+    setBit(&mut cpu, FC, a >= b)
     let r = (a - b) & mask
-    setBit(cpu, FZ, r == 0)
-    setBit(cpu, FN, (r & signbit) != 0)
+    setBit(&mut cpu, FZ, r == 0)
+    setBit(&mut cpu, FN, (r & signbit) != 0)
 }
 
 // --- op-from-resolved-address helpers (reuse for every addressing mode) ---
 fn oraFrom(cpu: &mut Cpu, m: &Mem, addr: i64, wrap: bool): void {
     let v = readMval(cpu, m, addr, wrap)
-    setA(cpu, cpu.a | v)
+    setA(&mut cpu, cpu.a | v)
 }
 
 fn andFrom(cpu: &mut Cpu, m: &Mem, addr: i64, wrap: bool): void {
     let v = readMval(cpu, m, addr, wrap)
-    setA(cpu, cpu.a & v)
+    setA(&mut cpu, cpu.a & v)
 }
 
 fn eorFrom(cpu: &mut Cpu, m: &Mem, addr: i64, wrap: bool): void {
     let v = readMval(cpu, m, addr, wrap)
-    setA(cpu, cpu.a ^ v)
+    setA(&mut cpu, cpu.a ^ v)
 }
 
 fn cmpFrom(cpu: &mut Cpu, m: &Mem, addr: i64, wrap: bool): void {
     let v = readMval(cpu, m, addr, wrap)
-    compareVals(cpu, cpu.a, v,!m8(cpu))
+    compareVals(&mut cpu, cpu.a, v,!m8(cpu))
 }
 
 fn cpxFrom(cpu: &mut Cpu, m: &Mem, addr: i64, wrap: bool): void {
     let v = readXval(cpu, m, addr, wrap)
-    compareVals(cpu, cpu.x, v,!x8(cpu))
+    compareVals(&mut cpu, cpu.x, v,!x8(cpu))
 }
 
 fn cpyFrom(cpu: &mut Cpu, m: &Mem, addr: i64, wrap: bool): void {
     let v = readXval(cpu, m, addr, wrap)
-    compareVals(cpu, cpu.y, v,!x8(cpu))
+    compareVals(&mut cpu, cpu.y, v,!x8(cpu))
 }
 
 fn ldxFrom(cpu: &mut Cpu, m: &Mem, addr: i64, wrap: bool): void {
     let v = readXval(cpu, m, addr, wrap)
-    setXreg(cpu, v)
+    setXreg(&mut cpu, v)
 }
 
 fn ldyFrom(cpu: &mut Cpu, m: &Mem, addr: i64, wrap: bool): void {
     let v = readXval(cpu, m, addr, wrap)
-    setYreg(cpu, v)
+    setYreg(&mut cpu, v)
 }
 
 fn stxTo(cpu: &Cpu, m: &mut Mem, addr: i64, wrap: bool): void {
     if x8(cpu) {
-        memWrite(m, addr, cpu.x & 0xFF)
+        memWrite(&mut m, addr, cpu.x & 0xFF)
     } else {
-        write16w(m, addr, cpu.x, wrap)
+        write16w(&mut m, addr, cpu.x, wrap)
     }
 }
 
 fn styTo(cpu: &Cpu, m: &mut Mem, addr: i64, wrap: bool): void {
     if x8(cpu) {
-        memWrite(m, addr, cpu.y & 0xFF)
+        memWrite(&mut m, addr, cpu.y & 0xFF)
     } else {
-        write16w(m, addr, cpu.y, wrap)
+        write16w(&mut m, addr, cpu.y, wrap)
     }
 }
 
 fn stzTo(cpu: &Cpu, m: &mut Mem, addr: i64, wrap: bool): void {
     if m8(cpu) {
-        memWrite(m, addr, 0)
+        memWrite(&mut m, addr, 0)
     } else {
-        write16w(m, addr, 0, wrap)
+        write16w(&mut m, addr, 0, wrap)
     }
 }
 
@@ -1533,11 +1533,11 @@ fn doADC(cpu: &mut Cpu, v: i64): void {
         }
         let topsh = (nib - 1) * 4
         let sV = (r & ((1 << topsh) - 1)) | (sTop << topsh)
-        setBit(cpu, FV, ((~(a ^ b)) & (a ^ sV) & signbit) != 0)
-        setBit(cpu, FC, carry != 0)
+        setBit(&mut cpu, FV, ((~(a ^ b)) & (a ^ sV) & signbit) != 0)
+        setBit(&mut cpu, FC, carry != 0)
         let rr = r & mask
-        setBit(cpu, FN, (rr & signbit) != 0) // N/Z from the final BCD result (65C816)
-        setBit(cpu, FZ, rr == 0)
+        setBit(&mut cpu, FN, (rr & signbit) != 0) // N/Z from the final BCD result (65C816)
+        setBit(&mut cpu, FZ, rr == 0)
         if wide {
             cpu.a = rr
         } else {
@@ -1546,10 +1546,10 @@ fn doADC(cpu: &mut Cpu, v: i64): void {
     } else {
         let sum = a + b + c
         let r = sum & mask
-        setBit(cpu, FC, sum >= carrybit)
-        setBit(cpu, FV, ((a ^ r) & (b ^ r) & signbit) != 0)
-        setBit(cpu, FZ, r == 0)
-        setBit(cpu, FN, (r & signbit) != 0)
+        setBit(&mut cpu, FC, sum >= carrybit)
+        setBit(&mut cpu, FV, ((a ^ r) & (b ^ r) & signbit) != 0)
+        setBit(&mut cpu, FZ, r == 0)
+        setBit(&mut cpu, FN, (r & signbit) != 0)
         if wide {
             cpu.a = r
         } else {
@@ -1582,10 +1582,10 @@ fn doSBC(cpu: &mut Cpu, v: i64): void {
     let comp = b ^ mask
     let sum = a + comp + c
     let rbin = sum & mask
-    setBit(cpu, FC, sum >= carrybit)
-    setBit(cpu, FV, ((a ^ rbin) & (comp ^ rbin) & signbit) != 0)
-    setBit(cpu, FN, (rbin & signbit) != 0)
-    setBit(cpu, FZ, rbin == 0)
+    setBit(&mut cpu, FC, sum >= carrybit)
+    setBit(&mut cpu, FV, ((a ^ rbin) & (comp ^ rbin) & signbit) != 0)
+    setBit(&mut cpu, FN, (rbin & signbit) != 0)
+    setBit(&mut cpu, FZ, rbin == 0)
     var r = rbin
     if (cpu.p & FD) != 0 {
         // Per-nibble BCD subtract; flags stay from the binary result above except
@@ -1612,8 +1612,8 @@ fn doSBC(cpu: &mut Cpu, v: i64): void {
             i = i + 1
         }
         r = dr & mask
-        setBit(cpu, FN, (r & signbit) != 0)
-        setBit(cpu, FZ, r == 0)
+        setBit(&mut cpu, FN, (r & signbit) != 0)
+        setBit(&mut cpu, FZ, r == 0)
     }
     if wide {
         cpu.a = r
@@ -1624,12 +1624,12 @@ fn doSBC(cpu: &mut Cpu, v: i64): void {
 
 fn adcFrom(cpu: &mut Cpu, m: &Mem, addr: i64, wrap: bool): void {
     let v = readMval(cpu, m, addr, wrap)
-    doADC(cpu, v)
+    doADC(&mut cpu, v)
 }
 
 fn sbcFrom(cpu: &mut Cpu, m: &Mem, addr: i64, wrap: bool): void {
     let v = readMval(cpu, m, addr, wrap)
-    doSBC(cpu, v)
+    doSBC(&mut cpu, v)
 }
 
 // --- RMW value transforms (accumulator width; set C + N/Z) ---
@@ -1647,17 +1647,17 @@ fn aslVal(cpu: &mut Cpu, v: i64): i64 {
     } else {
         0x8000
     }
-    setBit(cpu, FC, (v & signbit) != 0)
+    setBit(&mut cpu, FC, (v & signbit) != 0)
     let r = (v << 1) & mask
-    setNZa(cpu, r)
+    setNZa(&mut cpu, r)
     return r
 }
 
 fn lsrVal(cpu: &mut Cpu, v: i64): i64 {
     let mask = accMask(cpu)
-    setBit(cpu, FC, (v & 1) != 0)
+    setBit(&mut cpu, FC, (v & 1) != 0)
     let r = (v & mask) >> 1
-    setNZa(cpu, r)
+    setNZa(&mut cpu, r)
     return r
 }
 
@@ -1669,9 +1669,9 @@ fn rolVal(cpu: &mut Cpu, v: i64): i64 {
         0x8000
     }
     let oldC = cpu.p & FC
-    setBit(cpu, FC, (v & signbit) != 0)
+    setBit(&mut cpu, FC, (v & signbit) != 0)
     let r = ((v << 1) | oldC) & mask
-    setNZa(cpu, r)
+    setNZa(&mut cpu, r)
     return r
 }
 
@@ -1683,26 +1683,26 @@ fn rorVal(cpu: &mut Cpu, v: i64): i64 {
         0x8000
     }
     let oldC = cpu.p & FC
-    setBit(cpu, FC, (v & 1) != 0)
+    setBit(&mut cpu, FC, (v & 1) != 0)
     var r = (v & mask) >> 1
     if oldC != 0 {
         r = r | topbit
     }
-    setNZa(cpu, r)
+    setNZa(&mut cpu, r)
     return r
 }
 
 fn incVal(cpu: &mut Cpu, v: i64): i64 {
     let mask = accMask(cpu)
     let r = (v + 1) & mask
-    setNZa(cpu, r)
+    setNZa(&mut cpu, r)
     return r
 }
 
 fn decVal(cpu: &mut Cpu, v: i64): i64 {
     let mask = accMask(cpu)
     let r = (v - 1) & mask
-    setNZa(cpu, r)
+    setNZa(&mut cpu, r)
     return r
 }
 
@@ -1716,33 +1716,33 @@ fn writeAccW(cpu: &mut Cpu, r: i64): void {
 
 fn accASL(cpu: &mut Cpu): void {
     let v = cpu.a & accMask(cpu)
-    let r = aslVal(cpu, v)
-    writeAccW(cpu, r)
+    let r = aslVal(&mut cpu, v)
+    writeAccW(&mut cpu, r)
 }
 
 fn accLSR(cpu: &mut Cpu): void {
     let v = cpu.a & accMask(cpu)
-    let r = lsrVal(cpu, v)
-    writeAccW(cpu, r)
+    let r = lsrVal(&mut cpu, v)
+    writeAccW(&mut cpu, r)
 }
 
 fn accROL(cpu: &mut Cpu): void {
     let v = cpu.a & accMask(cpu)
-    let r = rolVal(cpu, v)
-    writeAccW(cpu, r)
+    let r = rolVal(&mut cpu, v)
+    writeAccW(&mut cpu, r)
 }
 
 fn accROR(cpu: &mut Cpu): void {
     let v = cpu.a & accMask(cpu)
-    let r = rorVal(cpu, v)
-    writeAccW(cpu, r)
+    let r = rorVal(&mut cpu, v)
+    writeAccW(&mut cpu, r)
 }
 
 fn rmwWrite(cpu: &Cpu, m: &mut Mem, addr: i64, wrap: bool, r: i64): void {
     if m8(cpu) {
-        memWrite(m, addr, r & 0xFF)
+        memWrite(&mut m, addr, r & 0xFF)
     } else {
-        write16w(m, addr, r, wrap)
+        write16w(&mut m, addr, r, wrap)
     }
 }
 
@@ -1751,39 +1751,39 @@ fn rmwMem(cpu: &mut Cpu, m: &mut Mem, addr: i64, wrap: bool, kind: i64): void {
     let v = readMval(cpu, m, addr, wrap)
     var r: i64 = 0
     if kind == 0 {
-        r = aslVal(cpu, v)
+        r = aslVal(&mut cpu, v)
     } 
     else if kind == 1 {
-        r = lsrVal(cpu, v)
+        r = lsrVal(&mut cpu, v)
     } 
     else if kind == 2 {
-        r = rolVal(cpu, v)
+        r = rolVal(&mut cpu, v)
     } 
     else if kind == 3 {
-        r = rorVal(cpu, v)
+        r = rorVal(&mut cpu, v)
     } 
     else if kind == 4 {
-        r = incVal(cpu, v)
+        r = incVal(&mut cpu, v)
     } 
     else {
-        r = decVal(cpu, v)
+        r = decVal(&mut cpu, v)
     }
-    rmwWrite(cpu, m, addr, wrap, r)
+    rmwWrite(cpu, &mut m, addr, wrap, r)
 }
 
 // TSB/TRB: Z from (A & M); write A|M (set) or M&~A (reset).
 fn tsbMem(cpu: &mut Cpu, m: &mut Mem, addr: i64, wrap: bool): void {
     let v = readMval(cpu, m, addr, wrap)
     let a = cpu.a & accMask(cpu)
-    setBit(cpu, FZ, (a & v) == 0)
-    rmwWrite(cpu, m, addr, wrap, v | a)
+    setBit(&mut cpu, FZ, (a & v) == 0)
+    rmwWrite(cpu, &mut m, addr, wrap, v | a)
 }
 
 fn trbMem(cpu: &mut Cpu, m: &mut Mem, addr: i64, wrap: bool): void {
     let v = readMval(cpu, m, addr, wrap)
     let a = cpu.a & accMask(cpu)
-    setBit(cpu, FZ, (a & v) == 0)
-    rmwWrite(cpu, m, addr, wrap, v & (~a))
+    setBit(&mut cpu, FZ, (a & v) == 0)
+    rmwWrite(cpu, &mut m, addr, wrap, v & (~a))
 }
 
 // BIT: Z from (A & M); N/V from M's top two bits. Immediate form sets only Z.
@@ -1799,19 +1799,19 @@ fn bitMem(cpu: &mut Cpu, m: &Mem, addr: i64, wrap: bool): void {
     } else {
         0x4000
     }
-    setBit(cpu, FZ, ((cpu.a & accMask(cpu)) & v) == 0)
-    setBit(cpu, FN, (v & signbit) != 0)
-    setBit(cpu, FV, (v & ovbit) != 0)
+    setBit(&mut cpu, FZ, ((cpu.a & accMask(cpu)) & v) == 0)
+    setBit(&mut cpu, FN, (v & signbit) != 0)
+    setBit(&mut cpu, FV, (v & ovbit) != 0)
 }
 
 fn bitImm(cpu: &mut Cpu, v: i64): void {
-    setBit(cpu, FZ, ((cpu.a & accMask(cpu)) & v) == 0)
+    setBit(&mut cpu, FZ, ((cpu.a & accMask(cpu)) & v) == 0)
 }
 
 // --- control flow ---
 // Relative 8-bit branch: fetch signed offset, apply if cond (PC already past it).
 fn branchIf(cpu: &mut Cpu, m: &Mem, cond: bool): void {
-    let off = fetch8(cpu, m)
+    let off = fetch8(&mut cpu, m)
     let soff: i64 = if off >= 0x80 {
         off - 0x100
     } else {
@@ -1827,20 +1827,20 @@ fn branchIf(cpu: &mut Cpu, m: &Mem, cond: bool): void {
 fn softInterrupt(cpu: &mut Cpu, m: &mut Mem, nativeVec: i64, emuVec: i64): void {
     let ret = (cpu.pc + 1) & 0xFFFF
     if cpu.e == 0 {
-        push8(cpu, m, cpu.pbr)
-        push16(cpu, m, ret)
-        push8(cpu, m, cpu.p)
-        setBit(cpu, FI, true)
-        setBit(cpu, FD, false)
+        push8(&mut cpu, &mut m, cpu.pbr)
+        push16(&mut cpu, &mut m, ret)
+        push8(&mut cpu, &mut m, cpu.p)
+        setBit(&mut cpu, FI, true)
+        setBit(&mut cpu, FD, false)
         cpu.pbr = 0
         let lo = memRead(m, nativeVec)
         let hi = memRead(m, nativeVec + 1)
         cpu.pc = lo | (hi << 8)
     } else {
-        push16(cpu, m, ret)
-        push8(cpu, m, cpu.p | 0x10) // emulation sets B in the pushed status
-        setBit(cpu, FI, true)
-        setBit(cpu, FD, false)
+        push16(&mut cpu, &mut m, ret)
+        push8(&mut cpu, &mut m, cpu.p | 0x10) // emulation sets B in the pushed status
+        setBit(&mut cpu, FI, true)
+        setBit(&mut cpu, FD, false)
         cpu.pbr = 0
         let lo = memRead(m, emuVec)
         let hi = memRead(m, emuVec + 1)
@@ -1855,13 +1855,13 @@ fn softInterrupt(cpu: &mut Cpu, m: &mut Mem, nativeVec: i64, emuVec: i64): void 
 // files instead capture cycle-bounded *partial* state and are excluded — an
 // instruction-stepped core can't reproduce a mid-move snapshot).
 fn blockMove(cpu: &mut Cpu, m: &mut Mem, dir: i64): void {
-    let destbank = fetch8(cpu, m)
-    let srcbank = fetch8(cpu, m)
+    let destbank = fetch8(&mut cpu, m)
+    let srcbank = fetch8(&mut cpu, m)
     cpu.dbr = destbank
     var guard: i64 = 0
     while true {
         let v = memRead(m, (srcbank << 16) | (cpu.x & 0xFFFF))
-        memWrite(m, (destbank << 16) | (cpu.y & 0xFFFF), v)
+        memWrite(&mut m, (destbank << 16) | (cpu.y & 0xFFFF), v)
         if x8(cpu) {
             cpu.x = (cpu.x + dir) & 0xFF
             cpu.y = (cpu.y + dir) & 0xFF
@@ -1886,7 +1886,7 @@ fn blockMove(cpu: &mut Cpu, m: &mut Mem, dir: i64): void {
 // default and register as failures against Harte until implemented.
 pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
     m.hcounter = m.hcounter + 1 // drives the $4212 HBLANK-flag stub
-    let op = fetch8(cpu, m)
+    let op = fetch8(&mut cpu, m)
     match op {
         // ---- NOP ----
         0xEA => {
@@ -1894,25 +1894,25 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
 
         // ---- flag set/clear ----
         0x18 => {
-            setBit(cpu, FC, false)
+            setBit(&mut cpu, FC, false)
         }
         0x38 => {
-            setBit(cpu, FC, true)
+            setBit(&mut cpu, FC, true)
         }
         0x58 => {
-            setBit(cpu, FI, false)
+            setBit(&mut cpu, FI, false)
         }
         0x78 => {
-            setBit(cpu, FI, true)
+            setBit(&mut cpu, FI, true)
         }
         0xB8 => {
-            setBit(cpu, FV, false)
+            setBit(&mut cpu, FV, false)
         }
         0xD8 => {
-            setBit(cpu, FD, false)
+            setBit(&mut cpu, FD, false)
         }
         0xF8 => {
-            setBit(cpu, FD, true)
+            setBit(&mut cpu, FD, true)
         }
 
         // ---- XCE: swap carry and emulation latches ----
@@ -1920,18 +1920,18 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
             let oldC = cpu.p & FC
             let oldE = cpu.e
             cpu.e = oldC
-            setBit(cpu, FC, oldE != 0)
-            applyEmulationConstraints(cpu)
+            setBit(&mut cpu, FC, oldE != 0)
+            applyEmulationConstraints(&mut cpu)
         }
 
         // ---- REP / SEP: clear / set P bits from an immediate mask ----
         0xC2 => {
-            let mask = fetch8(cpu, m)
+            let mask = fetch8(&mut cpu, m)
             cpu.p = cpu.p & (~mask)
-            applyEmulationConstraints(cpu) // can't clear M/X while emulating
+            applyEmulationConstraints(&mut cpu) // can't clear M/X while emulating
         }
         0xE2 => {
-            let mask = fetch8(cpu, m)
+            let mask = fetch8(&mut cpu, m)
             cpu.p = cpu.p | mask
             if (cpu.p & FX) != 0 { // narrowing X → truncate index high bytes
                 cpu.x = cpu.x & 0xFF
@@ -1947,7 +1947,7 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
                 cpu.a & 0xFFFF
             }
             cpu.x = v
-            setNZx(cpu, v)
+            setNZx(&mut cpu, v)
         }
         0xA8 => { // TAY
             let v = if x8(cpu) {
@@ -1956,24 +1956,24 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
                 cpu.a & 0xFFFF
             }
             cpu.y = v
-            setNZx(cpu, v)
+            setNZx(&mut cpu, v)
         }
         0x8A => { // TXA
             if m8(cpu) {
                 cpu.a = (cpu.a & 0xFF00) | (cpu.x & 0xFF)
-                setNZ8(cpu, cpu.x)
+                setNZ8(&mut cpu, cpu.x)
             } else {
                 cpu.a = cpu.x & 0xFFFF
-                setNZ16(cpu, cpu.x)
+                setNZ16(&mut cpu, cpu.x)
             }
         }
         0x98 => { // TYA
             if m8(cpu) {
                 cpu.a = (cpu.a & 0xFF00) | (cpu.y & 0xFF)
-                setNZ8(cpu, cpu.y)
+                setNZ8(&mut cpu, cpu.y)
             } else {
                 cpu.a = cpu.y & 0xFFFF
-                setNZ16(cpu, cpu.y)
+                setNZ16(&mut cpu, cpu.y)
             }
         }
         0xBA => { // TSX
@@ -1983,7 +1983,7 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
                 cpu.s & 0xFFFF
             }
             cpu.x = v
-            setNZx(cpu, v)
+            setNZx(&mut cpu, v)
         }
         0x9A => { // TXS — no flags; emulation forces SH=01
             if cpu.e == 1 {
@@ -1999,7 +1999,7 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
                 cpu.x & 0xFFFF
             }
             cpu.y = v
-            setNZx(cpu, v)
+            setNZx(&mut cpu, v)
         }
         0xBB => { // TYX
             let v = if x8(cpu) {
@@ -2008,7 +2008,7 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
                 cpu.y & 0xFFFF
             }
             cpu.x = v
-            setNZx(cpu, v)
+            setNZx(&mut cpu, v)
         }
         0x1B => { // TCS — 16-bit C→S always; emulation forces SH=01, no flags
             if cpu.e == 1 {
@@ -2019,15 +2019,15 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
         }
         0x3B => { // TSC — 16-bit S→C, 16-bit flags
             cpu.a = cpu.s & 0xFFFF
-            setNZ16(cpu, cpu.a)
+            setNZ16(&mut cpu, cpu.a)
         }
         0x5B => { // TCD — 16-bit A→D, 16-bit flags
             cpu.d = cpu.a & 0xFFFF
-            setNZ16(cpu, cpu.d)
+            setNZ16(&mut cpu, cpu.d)
         }
         0x7B => { // TDC — 16-bit D→C, 16-bit flags
             cpu.a = cpu.d & 0xFFFF
-            setNZ16(cpu, cpu.a)
+            setNZ16(&mut cpu, cpu.a)
         }
 
         // ---- XBA: swap A's two bytes; N/Z from the new low byte (8-bit) ----
@@ -2035,7 +2035,7 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
             let lo = cpu.a & 0xFF
             let hi = (cpu.a >> 8) & 0xFF
             cpu.a = (lo << 8) | hi
-            setNZ8(cpu, hi)
+            setNZ8(&mut cpu, hi)
         }
 
         // ---- INC/DEC on registers ----
@@ -2045,7 +2045,7 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
             } else {
                 cpu.x = (cpu.x + 1) & 0xFFFF
             }
-            setNZx(cpu, cpu.x)
+            setNZx(&mut cpu, cpu.x)
         }
         0xC8 => { // INY
             if x8(cpu) {
@@ -2053,7 +2053,7 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
             } else {
                 cpu.y = (cpu.y + 1) & 0xFFFF
             }
-            setNZx(cpu, cpu.y)
+            setNZx(&mut cpu, cpu.y)
         }
         0xCA => { // DEX
             if x8(cpu) {
@@ -2061,7 +2061,7 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
             } else {
                 cpu.x = (cpu.x - 1) & 0xFFFF
             }
-            setNZx(cpu, cpu.x)
+            setNZx(&mut cpu, cpu.x)
         }
         0x88 => { // DEY
             if x8(cpu) {
@@ -2069,825 +2069,825 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
             } else {
                 cpu.y = (cpu.y - 1) & 0xFFFF
             }
-            setNZx(cpu, cpu.y)
+            setNZx(&mut cpu, cpu.y)
         }
         0x1A => { // INC A
             if m8(cpu) {
                 let lo = (cpu.a + 1) & 0xFF
                 cpu.a = (cpu.a & 0xFF00) | lo
-                setNZ8(cpu, lo)
+                setNZ8(&mut cpu, lo)
             } else {
                 cpu.a = (cpu.a + 1) & 0xFFFF
-                setNZ16(cpu, cpu.a)
+                setNZ16(&mut cpu, cpu.a)
             }
         }
         0x3A => { // DEC A
             if m8(cpu) {
                 let lo = (cpu.a - 1) & 0xFF
                 cpu.a = (cpu.a & 0xFF00) | lo
-                setNZ8(cpu, lo)
+                setNZ8(&mut cpu, lo)
             } else {
                 cpu.a = (cpu.a - 1) & 0xFFFF
-                setNZ16(cpu, cpu.a)
+                setNZ16(&mut cpu, cpu.a)
             }
         }
 
         // ---- immediate loads (operand width = register width) ----
         0xA9 => { // LDA #
             if m8(cpu) {
-                let v = fetch8(cpu, m)
+                let v = fetch8(&mut cpu, m)
                 cpu.a = (cpu.a & 0xFF00) | v
-                setNZ8(cpu, v)
+                setNZ8(&mut cpu, v)
             } else {
-                let lo = fetch8(cpu, m)
-                let hi = fetch8(cpu, m)
+                let lo = fetch8(&mut cpu, m)
+                let hi = fetch8(&mut cpu, m)
                 cpu.a = lo | (hi << 8)
-                setNZ16(cpu, cpu.a)
+                setNZ16(&mut cpu, cpu.a)
             }
         }
         0xA2 => { // LDX #
             if x8(cpu) {
-                let v = fetch8(cpu, m)
+                let v = fetch8(&mut cpu, m)
                 cpu.x = v
-                setNZ8(cpu, v)
+                setNZ8(&mut cpu, v)
             } else {
-                let lo = fetch8(cpu, m)
-                let hi = fetch8(cpu, m)
+                let lo = fetch8(&mut cpu, m)
+                let hi = fetch8(&mut cpu, m)
                 cpu.x = lo | (hi << 8)
-                setNZ16(cpu, cpu.x)
+                setNZ16(&mut cpu, cpu.x)
             }
         }
         0xA0 => { // LDY #
             if x8(cpu) {
-                let v = fetch8(cpu, m)
+                let v = fetch8(&mut cpu, m)
                 cpu.y = v
-                setNZ8(cpu, v)
+                setNZ8(&mut cpu, v)
             } else {
-                let lo = fetch8(cpu, m)
-                let hi = fetch8(cpu, m)
+                let lo = fetch8(&mut cpu, m)
+                let hi = fetch8(&mut cpu, m)
                 cpu.y = lo | (hi << 8)
-                setNZ16(cpu, cpu.y)
+                setNZ16(&mut cpu, cpu.y)
             }
         }
 
         // ---- LDA (memory addressing modes; immediate A9 handled above) ----
         0xA5 => {
-            ldaFrom(cpu, m, aDp(cpu, m), true)
+            ldaFrom(&mut cpu, m, aDp(&mut cpu, m), true)
         } // dp
         0xB5 => {
-            ldaFrom(cpu, m, aDpX(cpu, m), true)
+            ldaFrom(&mut cpu, m, aDpX(&mut cpu, m), true)
         } // dp,X
         0xAD => {
-            ldaFrom(cpu, m, aAbs(cpu, m), false)
+            ldaFrom(&mut cpu, m, aAbs(&mut cpu, m), false)
         } // abs
         0xBD => {
-            ldaFrom(cpu, m, aAbsX(cpu, m), false)
+            ldaFrom(&mut cpu, m, aAbsX(&mut cpu, m), false)
         } // abs,X
         0xB9 => {
-            ldaFrom(cpu, m, aAbsY(cpu, m), false)
+            ldaFrom(&mut cpu, m, aAbsY(&mut cpu, m), false)
         } // abs,Y
         0xAF => {
-            ldaFrom(cpu, m, aLong(cpu, m), false)
+            ldaFrom(&mut cpu, m, aLong(&mut cpu, m), false)
         } // long
         0xBF => {
-            ldaFrom(cpu, m, aLongX(cpu, m), false)
+            ldaFrom(&mut cpu, m, aLongX(&mut cpu, m), false)
         } // long,X
         0xA1 => {
-            ldaFrom(cpu, m, aDpIndX(cpu, m), false)
+            ldaFrom(&mut cpu, m, aDpIndX(&mut cpu, m), false)
         } // (dp,X)
         0xB1 => {
-            ldaFrom(cpu, m, aDpIndY(cpu, m), false)
+            ldaFrom(&mut cpu, m, aDpIndY(&mut cpu, m), false)
         } // (dp),Y
         0xB2 => {
-            ldaFrom(cpu, m, aDpInd(cpu, m), false)
+            ldaFrom(&mut cpu, m, aDpInd(&mut cpu, m), false)
         } // LDA (dp)
         0xA7 => {
-            ldaFrom(cpu, m, aDpLong(cpu, m), false)
+            ldaFrom(&mut cpu, m, aDpLong(&mut cpu, m), false)
         } // [dp]
         0xB7 => {
-            ldaFrom(cpu, m, aDpLongY(cpu, m), false)
+            ldaFrom(&mut cpu, m, aDpLongY(&mut cpu, m), false)
         } // [dp],Y
         0xA3 => {
-            ldaFrom(cpu, m, aSr(cpu, m), true)
+            ldaFrom(&mut cpu, m, aSr(&mut cpu, m), true)
         } // sr,S
         0xB3 => {
-            ldaFrom(cpu, m, aSrY(cpu, m), false)
+            ldaFrom(&mut cpu, m, aSrY(&mut cpu, m), false)
         } // (sr,S),Y
 
         // ---- STA (store A; address resolved first to sequence the borrows) ----
         0x85 => {
-            let a = aDp(cpu, m)
-            staTo(cpu, m, a, true)
+            let a = aDp(&mut cpu, m)
+            staTo(cpu, &mut m, a, true)
         }
         0x95 => {
-            let a = aDpX(cpu, m)
-            staTo(cpu, m, a, true)
+            let a = aDpX(&mut cpu, m)
+            staTo(cpu, &mut m, a, true)
         }
         0x8D => {
-            let a = aAbs(cpu, m)
-            staTo(cpu, m, a, false)
+            let a = aAbs(&mut cpu, m)
+            staTo(cpu, &mut m, a, false)
         }
         0x9D => {
-            let a = aAbsX(cpu, m)
-            staTo(cpu, m, a, false)
+            let a = aAbsX(&mut cpu, m)
+            staTo(cpu, &mut m, a, false)
         }
         0x99 => {
-            let a = aAbsY(cpu, m)
-            staTo(cpu, m, a, false)
+            let a = aAbsY(&mut cpu, m)
+            staTo(cpu, &mut m, a, false)
         }
         0x8F => {
-            let a = aLong(cpu, m)
-            staTo(cpu, m, a, false)
+            let a = aLong(&mut cpu, m)
+            staTo(cpu, &mut m, a, false)
         }
         0x9F => {
-            let a = aLongX(cpu, m)
-            staTo(cpu, m, a, false)
+            let a = aLongX(&mut cpu, m)
+            staTo(cpu, &mut m, a, false)
         }
         0x81 => {
-            let a = aDpIndX(cpu, m)
-            staTo(cpu, m, a, false)
+            let a = aDpIndX(&mut cpu, m)
+            staTo(cpu, &mut m, a, false)
         }
         0x91 => {
-            let a = aDpIndY(cpu, m)
-            staTo(cpu, m, a, false)
+            let a = aDpIndY(&mut cpu, m)
+            staTo(cpu, &mut m, a, false)
         }
         0x92 => {
-            let a = aDpInd(cpu, m)
-            staTo(cpu, m, a, false)
+            let a = aDpInd(&mut cpu, m)
+            staTo(cpu, &mut m, a, false)
         } // STA (dp)
         0x87 => {
-            let a = aDpLong(cpu, m)
-            staTo(cpu, m, a, false)
+            let a = aDpLong(&mut cpu, m)
+            staTo(cpu, &mut m, a, false)
         }
         0x97 => {
-            let a = aDpLongY(cpu, m)
-            staTo(cpu, m, a, false)
+            let a = aDpLongY(&mut cpu, m)
+            staTo(cpu, &mut m, a, false)
         }
         0x83 => {
-            let a = aSr(cpu, m)
-            staTo(cpu, m, a, true)
+            let a = aSr(&mut cpu, m)
+            staTo(cpu, &mut m, a, true)
         }
         0x93 => {
-            let a = aSrY(cpu, m)
-            staTo(cpu, m, a, false)
+            let a = aSrY(&mut cpu, m)
+            staTo(cpu, &mut m, a, false)
         }
 
         // ---- ORA ----
         0x09 => {
-            let v = immM(cpu, m)
-            setA(cpu, cpu.a | v)
+            let v = immM(&mut cpu, m)
+            setA(&mut cpu, cpu.a | v)
         }
         0x05 => {
-            let a = aDp(cpu, m)
-            oraFrom(cpu, m, a, true)
+            let a = aDp(&mut cpu, m)
+            oraFrom(&mut cpu, m, a, true)
         }
         0x15 => {
-            let a = aDpX(cpu, m)
-            oraFrom(cpu, m, a, true)
+            let a = aDpX(&mut cpu, m)
+            oraFrom(&mut cpu, m, a, true)
         }
         0x0D => {
-            let a = aAbs(cpu, m)
-            oraFrom(cpu, m, a, false)
+            let a = aAbs(&mut cpu, m)
+            oraFrom(&mut cpu, m, a, false)
         }
         0x1D => {
-            let a = aAbsX(cpu, m)
-            oraFrom(cpu, m, a, false)
+            let a = aAbsX(&mut cpu, m)
+            oraFrom(&mut cpu, m, a, false)
         }
         0x19 => {
-            let a = aAbsY(cpu, m)
-            oraFrom(cpu, m, a, false)
+            let a = aAbsY(&mut cpu, m)
+            oraFrom(&mut cpu, m, a, false)
         }
         0x0F => {
-            let a = aLong(cpu, m)
-            oraFrom(cpu, m, a, false)
+            let a = aLong(&mut cpu, m)
+            oraFrom(&mut cpu, m, a, false)
         }
         0x1F => {
-            let a = aLongX(cpu, m)
-            oraFrom(cpu, m, a, false)
+            let a = aLongX(&mut cpu, m)
+            oraFrom(&mut cpu, m, a, false)
         }
         0x01 => {
-            let a = aDpIndX(cpu, m)
-            oraFrom(cpu, m, a, false)
+            let a = aDpIndX(&mut cpu, m)
+            oraFrom(&mut cpu, m, a, false)
         }
         0x11 => {
-            let a = aDpIndY(cpu, m)
-            oraFrom(cpu, m, a, false)
+            let a = aDpIndY(&mut cpu, m)
+            oraFrom(&mut cpu, m, a, false)
         }
         0x12 => {
-            let a = aDpInd(cpu, m)
-            oraFrom(cpu, m, a, false)
+            let a = aDpInd(&mut cpu, m)
+            oraFrom(&mut cpu, m, a, false)
         } // ORA (dp)
         0x07 => {
-            let a = aDpLong(cpu, m)
-            oraFrom(cpu, m, a, false)
+            let a = aDpLong(&mut cpu, m)
+            oraFrom(&mut cpu, m, a, false)
         }
         0x17 => {
-            let a = aDpLongY(cpu, m)
-            oraFrom(cpu, m, a, false)
+            let a = aDpLongY(&mut cpu, m)
+            oraFrom(&mut cpu, m, a, false)
         }
         0x03 => {
-            let a = aSr(cpu, m)
-            oraFrom(cpu, m, a, true)
+            let a = aSr(&mut cpu, m)
+            oraFrom(&mut cpu, m, a, true)
         }
         0x13 => {
-            let a = aSrY(cpu, m)
-            oraFrom(cpu, m, a, false)
+            let a = aSrY(&mut cpu, m)
+            oraFrom(&mut cpu, m, a, false)
         }
 
         // ---- AND ----
         0x29 => {
-            let v = immM(cpu, m)
-            setA(cpu, cpu.a & v)
+            let v = immM(&mut cpu, m)
+            setA(&mut cpu, cpu.a & v)
         }
         0x25 => {
-            let a = aDp(cpu, m)
-            andFrom(cpu, m, a, true)
+            let a = aDp(&mut cpu, m)
+            andFrom(&mut cpu, m, a, true)
         }
         0x35 => {
-            let a = aDpX(cpu, m)
-            andFrom(cpu, m, a, true)
+            let a = aDpX(&mut cpu, m)
+            andFrom(&mut cpu, m, a, true)
         }
         0x2D => {
-            let a = aAbs(cpu, m)
-            andFrom(cpu, m, a, false)
+            let a = aAbs(&mut cpu, m)
+            andFrom(&mut cpu, m, a, false)
         }
         0x3D => {
-            let a = aAbsX(cpu, m)
-            andFrom(cpu, m, a, false)
+            let a = aAbsX(&mut cpu, m)
+            andFrom(&mut cpu, m, a, false)
         }
         0x39 => {
-            let a = aAbsY(cpu, m)
-            andFrom(cpu, m, a, false)
+            let a = aAbsY(&mut cpu, m)
+            andFrom(&mut cpu, m, a, false)
         }
         0x2F => {
-            let a = aLong(cpu, m)
-            andFrom(cpu, m, a, false)
+            let a = aLong(&mut cpu, m)
+            andFrom(&mut cpu, m, a, false)
         }
         0x3F => {
-            let a = aLongX(cpu, m)
-            andFrom(cpu, m, a, false)
+            let a = aLongX(&mut cpu, m)
+            andFrom(&mut cpu, m, a, false)
         }
         0x21 => {
-            let a = aDpIndX(cpu, m)
-            andFrom(cpu, m, a, false)
+            let a = aDpIndX(&mut cpu, m)
+            andFrom(&mut cpu, m, a, false)
         }
         0x31 => {
-            let a = aDpIndY(cpu, m)
-            andFrom(cpu, m, a, false)
+            let a = aDpIndY(&mut cpu, m)
+            andFrom(&mut cpu, m, a, false)
         }
         0x32 => {
-            let a = aDpInd(cpu, m)
-            andFrom(cpu, m, a, false)
+            let a = aDpInd(&mut cpu, m)
+            andFrom(&mut cpu, m, a, false)
         } // AND (dp)
         0x27 => {
-            let a = aDpLong(cpu, m)
-            andFrom(cpu, m, a, false)
+            let a = aDpLong(&mut cpu, m)
+            andFrom(&mut cpu, m, a, false)
         }
         0x37 => {
-            let a = aDpLongY(cpu, m)
-            andFrom(cpu, m, a, false)
+            let a = aDpLongY(&mut cpu, m)
+            andFrom(&mut cpu, m, a, false)
         }
         0x23 => {
-            let a = aSr(cpu, m)
-            andFrom(cpu, m, a, true)
+            let a = aSr(&mut cpu, m)
+            andFrom(&mut cpu, m, a, true)
         }
         0x33 => {
-            let a = aSrY(cpu, m)
-            andFrom(cpu, m, a, false)
+            let a = aSrY(&mut cpu, m)
+            andFrom(&mut cpu, m, a, false)
         }
 
         // ---- EOR ----
         0x49 => {
-            let v = immM(cpu, m)
-            setA(cpu, cpu.a ^ v)
+            let v = immM(&mut cpu, m)
+            setA(&mut cpu, cpu.a ^ v)
         }
         0x45 => {
-            let a = aDp(cpu, m)
-            eorFrom(cpu, m, a, true)
+            let a = aDp(&mut cpu, m)
+            eorFrom(&mut cpu, m, a, true)
         }
         0x55 => {
-            let a = aDpX(cpu, m)
-            eorFrom(cpu, m, a, true)
+            let a = aDpX(&mut cpu, m)
+            eorFrom(&mut cpu, m, a, true)
         }
         0x4D => {
-            let a = aAbs(cpu, m)
-            eorFrom(cpu, m, a, false)
+            let a = aAbs(&mut cpu, m)
+            eorFrom(&mut cpu, m, a, false)
         }
         0x5D => {
-            let a = aAbsX(cpu, m)
-            eorFrom(cpu, m, a, false)
+            let a = aAbsX(&mut cpu, m)
+            eorFrom(&mut cpu, m, a, false)
         }
         0x59 => {
-            let a = aAbsY(cpu, m)
-            eorFrom(cpu, m, a, false)
+            let a = aAbsY(&mut cpu, m)
+            eorFrom(&mut cpu, m, a, false)
         }
         0x4F => {
-            let a = aLong(cpu, m)
-            eorFrom(cpu, m, a, false)
+            let a = aLong(&mut cpu, m)
+            eorFrom(&mut cpu, m, a, false)
         }
         0x5F => {
-            let a = aLongX(cpu, m)
-            eorFrom(cpu, m, a, false)
+            let a = aLongX(&mut cpu, m)
+            eorFrom(&mut cpu, m, a, false)
         }
         0x41 => {
-            let a = aDpIndX(cpu, m)
-            eorFrom(cpu, m, a, false)
+            let a = aDpIndX(&mut cpu, m)
+            eorFrom(&mut cpu, m, a, false)
         }
         0x51 => {
-            let a = aDpIndY(cpu, m)
-            eorFrom(cpu, m, a, false)
+            let a = aDpIndY(&mut cpu, m)
+            eorFrom(&mut cpu, m, a, false)
         }
         0x52 => {
-            let a = aDpInd(cpu, m)
-            eorFrom(cpu, m, a, false)
+            let a = aDpInd(&mut cpu, m)
+            eorFrom(&mut cpu, m, a, false)
         } // EOR (dp)
         0x47 => {
-            let a = aDpLong(cpu, m)
-            eorFrom(cpu, m, a, false)
+            let a = aDpLong(&mut cpu, m)
+            eorFrom(&mut cpu, m, a, false)
         }
         0x57 => {
-            let a = aDpLongY(cpu, m)
-            eorFrom(cpu, m, a, false)
+            let a = aDpLongY(&mut cpu, m)
+            eorFrom(&mut cpu, m, a, false)
         }
         0x43 => {
-            let a = aSr(cpu, m)
-            eorFrom(cpu, m, a, true)
+            let a = aSr(&mut cpu, m)
+            eorFrom(&mut cpu, m, a, true)
         }
         0x53 => {
-            let a = aSrY(cpu, m)
-            eorFrom(cpu, m, a, false)
+            let a = aSrY(&mut cpu, m)
+            eorFrom(&mut cpu, m, a, false)
         }
 
         // ---- CMP ----
         0xC9 => {
-            let v = immM(cpu, m)
-            compareVals(cpu, cpu.a, v,!m8(cpu))
+            let v = immM(&mut cpu, m)
+            compareVals(&mut cpu, cpu.a, v,!m8(cpu))
         }
         0xC5 => {
-            let a = aDp(cpu, m)
-            cmpFrom(cpu, m, a, true)
+            let a = aDp(&mut cpu, m)
+            cmpFrom(&mut cpu, m, a, true)
         }
         0xD5 => {
-            let a = aDpX(cpu, m)
-            cmpFrom(cpu, m, a, true)
+            let a = aDpX(&mut cpu, m)
+            cmpFrom(&mut cpu, m, a, true)
         }
         0xCD => {
-            let a = aAbs(cpu, m)
-            cmpFrom(cpu, m, a, false)
+            let a = aAbs(&mut cpu, m)
+            cmpFrom(&mut cpu, m, a, false)
         }
         0xDD => {
-            let a = aAbsX(cpu, m)
-            cmpFrom(cpu, m, a, false)
+            let a = aAbsX(&mut cpu, m)
+            cmpFrom(&mut cpu, m, a, false)
         }
         0xD9 => {
-            let a = aAbsY(cpu, m)
-            cmpFrom(cpu, m, a, false)
+            let a = aAbsY(&mut cpu, m)
+            cmpFrom(&mut cpu, m, a, false)
         }
         0xCF => {
-            let a = aLong(cpu, m)
-            cmpFrom(cpu, m, a, false)
+            let a = aLong(&mut cpu, m)
+            cmpFrom(&mut cpu, m, a, false)
         }
         0xDF => {
-            let a = aLongX(cpu, m)
-            cmpFrom(cpu, m, a, false)
+            let a = aLongX(&mut cpu, m)
+            cmpFrom(&mut cpu, m, a, false)
         }
         0xC1 => {
-            let a = aDpIndX(cpu, m)
-            cmpFrom(cpu, m, a, false)
+            let a = aDpIndX(&mut cpu, m)
+            cmpFrom(&mut cpu, m, a, false)
         }
         0xD1 => {
-            let a = aDpIndY(cpu, m)
-            cmpFrom(cpu, m, a, false)
+            let a = aDpIndY(&mut cpu, m)
+            cmpFrom(&mut cpu, m, a, false)
         }
         0xD2 => {
-            let a = aDpInd(cpu, m)
-            cmpFrom(cpu, m, a, false)
+            let a = aDpInd(&mut cpu, m)
+            cmpFrom(&mut cpu, m, a, false)
         } // CMP (dp)
         0xC7 => {
-            let a = aDpLong(cpu, m)
-            cmpFrom(cpu, m, a, false)
+            let a = aDpLong(&mut cpu, m)
+            cmpFrom(&mut cpu, m, a, false)
         }
         0xD7 => {
-            let a = aDpLongY(cpu, m)
-            cmpFrom(cpu, m, a, false)
+            let a = aDpLongY(&mut cpu, m)
+            cmpFrom(&mut cpu, m, a, false)
         }
         0xC3 => {
-            let a = aSr(cpu, m)
-            cmpFrom(cpu, m, a, true)
+            let a = aSr(&mut cpu, m)
+            cmpFrom(&mut cpu, m, a, true)
         }
         0xD3 => {
-            let a = aSrY(cpu, m)
-            cmpFrom(cpu, m, a, false)
+            let a = aSrY(&mut cpu, m)
+            cmpFrom(&mut cpu, m, a, false)
         }
 
         // ---- CPX / CPY ----
         0xE0 => {
-            let v = immX(cpu, m)
-            compareVals(cpu, cpu.x, v,!x8(cpu))
+            let v = immX(&mut cpu, m)
+            compareVals(&mut cpu, cpu.x, v,!x8(cpu))
         }
         0xE4 => {
-            let a = aDp(cpu, m)
-            cpxFrom(cpu, m, a, true)
+            let a = aDp(&mut cpu, m)
+            cpxFrom(&mut cpu, m, a, true)
         }
         0xEC => {
-            let a = aAbs(cpu, m)
-            cpxFrom(cpu, m, a, false)
+            let a = aAbs(&mut cpu, m)
+            cpxFrom(&mut cpu, m, a, false)
         }
         0xC0 => {
-            let v = immX(cpu, m)
-            compareVals(cpu, cpu.y, v,!x8(cpu))
+            let v = immX(&mut cpu, m)
+            compareVals(&mut cpu, cpu.y, v,!x8(cpu))
         }
         0xC4 => {
-            let a = aDp(cpu, m)
-            cpyFrom(cpu, m, a, true)
+            let a = aDp(&mut cpu, m)
+            cpyFrom(&mut cpu, m, a, true)
         }
         0xCC => {
-            let a = aAbs(cpu, m)
-            cpyFrom(cpu, m, a, false)
+            let a = aAbs(&mut cpu, m)
+            cpyFrom(&mut cpu, m, a, false)
         }
 
         // ---- LDX / LDY (immediate A2/A0 handled above) ----
         0xA6 => {
-            let a = aDp(cpu, m)
-            ldxFrom(cpu, m, a, true)
+            let a = aDp(&mut cpu, m)
+            ldxFrom(&mut cpu, m, a, true)
         }
         0xB6 => {
-            let a = aDpY(cpu, m)
-            ldxFrom(cpu, m, a, true)
+            let a = aDpY(&mut cpu, m)
+            ldxFrom(&mut cpu, m, a, true)
         }
         0xAE => {
-            let a = aAbs(cpu, m)
-            ldxFrom(cpu, m, a, false)
+            let a = aAbs(&mut cpu, m)
+            ldxFrom(&mut cpu, m, a, false)
         }
         0xBE => {
-            let a = aAbsY(cpu, m)
-            ldxFrom(cpu, m, a, false)
+            let a = aAbsY(&mut cpu, m)
+            ldxFrom(&mut cpu, m, a, false)
         }
         0xA4 => {
-            let a = aDp(cpu, m)
-            ldyFrom(cpu, m, a, true)
+            let a = aDp(&mut cpu, m)
+            ldyFrom(&mut cpu, m, a, true)
         }
         0xB4 => {
-            let a = aDpX(cpu, m)
-            ldyFrom(cpu, m, a, true)
+            let a = aDpX(&mut cpu, m)
+            ldyFrom(&mut cpu, m, a, true)
         }
         0xAC => {
-            let a = aAbs(cpu, m)
-            ldyFrom(cpu, m, a, false)
+            let a = aAbs(&mut cpu, m)
+            ldyFrom(&mut cpu, m, a, false)
         }
         0xBC => {
-            let a = aAbsX(cpu, m)
-            ldyFrom(cpu, m, a, false)
+            let a = aAbsX(&mut cpu, m)
+            ldyFrom(&mut cpu, m, a, false)
         }
 
         // ---- STX / STY / STZ ----
         0x86 => {
-            let a = aDp(cpu, m)
-            stxTo(cpu, m, a, true)
+            let a = aDp(&mut cpu, m)
+            stxTo(cpu, &mut m, a, true)
         }
         0x96 => {
-            let a = aDpY(cpu, m)
-            stxTo(cpu, m, a, true)
+            let a = aDpY(&mut cpu, m)
+            stxTo(cpu, &mut m, a, true)
         }
         0x8E => {
-            let a = aAbs(cpu, m)
-            stxTo(cpu, m, a, false)
+            let a = aAbs(&mut cpu, m)
+            stxTo(cpu, &mut m, a, false)
         }
         0x84 => {
-            let a = aDp(cpu, m)
-            styTo(cpu, m, a, true)
+            let a = aDp(&mut cpu, m)
+            styTo(cpu, &mut m, a, true)
         }
         0x94 => {
-            let a = aDpX(cpu, m)
-            styTo(cpu, m, a, true)
+            let a = aDpX(&mut cpu, m)
+            styTo(cpu, &mut m, a, true)
         }
         0x8C => {
-            let a = aAbs(cpu, m)
-            styTo(cpu, m, a, false)
+            let a = aAbs(&mut cpu, m)
+            styTo(cpu, &mut m, a, false)
         }
         0x64 => {
-            let a = aDp(cpu, m)
-            stzTo(cpu, m, a, true)
+            let a = aDp(&mut cpu, m)
+            stzTo(cpu, &mut m, a, true)
         }
         0x74 => {
-            let a = aDpX(cpu, m)
-            stzTo(cpu, m, a, true)
+            let a = aDpX(&mut cpu, m)
+            stzTo(cpu, &mut m, a, true)
         }
         0x9C => {
-            let a = aAbs(cpu, m)
-            stzTo(cpu, m, a, false)
+            let a = aAbs(&mut cpu, m)
+            stzTo(cpu, &mut m, a, false)
         }
         0x9E => {
-            let a = aAbsX(cpu, m)
-            stzTo(cpu, m, a, false)
+            let a = aAbsX(&mut cpu, m)
+            stzTo(cpu, &mut m, a, false)
         }
 
         // ---- ADC ----
         0x69 => {
-            let v = immM(cpu, m)
-            doADC(cpu, v)
+            let v = immM(&mut cpu, m)
+            doADC(&mut cpu, v)
         }
         0x65 => {
-            let a = aDp(cpu, m)
-            adcFrom(cpu, m, a, true)
+            let a = aDp(&mut cpu, m)
+            adcFrom(&mut cpu, m, a, true)
         }
         0x75 => {
-            let a = aDpX(cpu, m)
-            adcFrom(cpu, m, a, true)
+            let a = aDpX(&mut cpu, m)
+            adcFrom(&mut cpu, m, a, true)
         }
         0x6D => {
-            let a = aAbs(cpu, m)
-            adcFrom(cpu, m, a, false)
+            let a = aAbs(&mut cpu, m)
+            adcFrom(&mut cpu, m, a, false)
         }
         0x7D => {
-            let a = aAbsX(cpu, m)
-            adcFrom(cpu, m, a, false)
+            let a = aAbsX(&mut cpu, m)
+            adcFrom(&mut cpu, m, a, false)
         }
         0x79 => {
-            let a = aAbsY(cpu, m)
-            adcFrom(cpu, m, a, false)
+            let a = aAbsY(&mut cpu, m)
+            adcFrom(&mut cpu, m, a, false)
         }
         0x6F => {
-            let a = aLong(cpu, m)
-            adcFrom(cpu, m, a, false)
+            let a = aLong(&mut cpu, m)
+            adcFrom(&mut cpu, m, a, false)
         }
         0x7F => {
-            let a = aLongX(cpu, m)
-            adcFrom(cpu, m, a, false)
+            let a = aLongX(&mut cpu, m)
+            adcFrom(&mut cpu, m, a, false)
         }
         0x61 => {
-            let a = aDpIndX(cpu, m)
-            adcFrom(cpu, m, a, false)
+            let a = aDpIndX(&mut cpu, m)
+            adcFrom(&mut cpu, m, a, false)
         }
         0x71 => {
-            let a = aDpIndY(cpu, m)
-            adcFrom(cpu, m, a, false)
+            let a = aDpIndY(&mut cpu, m)
+            adcFrom(&mut cpu, m, a, false)
         }
         0x72 => {
-            let a = aDpInd(cpu, m)
-            adcFrom(cpu, m, a, false)
+            let a = aDpInd(&mut cpu, m)
+            adcFrom(&mut cpu, m, a, false)
         } // ADC (dp)
         0x67 => {
-            let a = aDpLong(cpu, m)
-            adcFrom(cpu, m, a, false)
+            let a = aDpLong(&mut cpu, m)
+            adcFrom(&mut cpu, m, a, false)
         }
         0x77 => {
-            let a = aDpLongY(cpu, m)
-            adcFrom(cpu, m, a, false)
+            let a = aDpLongY(&mut cpu, m)
+            adcFrom(&mut cpu, m, a, false)
         }
         0x63 => {
-            let a = aSr(cpu, m)
-            adcFrom(cpu, m, a, true)
+            let a = aSr(&mut cpu, m)
+            adcFrom(&mut cpu, m, a, true)
         }
         0x73 => {
-            let a = aSrY(cpu, m)
-            adcFrom(cpu, m, a, false)
+            let a = aSrY(&mut cpu, m)
+            adcFrom(&mut cpu, m, a, false)
         }
 
         // ---- SBC ----
         0xE9 => {
-            let v = immM(cpu, m)
-            doSBC(cpu, v)
+            let v = immM(&mut cpu, m)
+            doSBC(&mut cpu, v)
         }
         0xE5 => {
-            let a = aDp(cpu, m)
-            sbcFrom(cpu, m, a, true)
+            let a = aDp(&mut cpu, m)
+            sbcFrom(&mut cpu, m, a, true)
         }
         0xF5 => {
-            let a = aDpX(cpu, m)
-            sbcFrom(cpu, m, a, true)
+            let a = aDpX(&mut cpu, m)
+            sbcFrom(&mut cpu, m, a, true)
         }
         0xED => {
-            let a = aAbs(cpu, m)
-            sbcFrom(cpu, m, a, false)
+            let a = aAbs(&mut cpu, m)
+            sbcFrom(&mut cpu, m, a, false)
         }
         0xFD => {
-            let a = aAbsX(cpu, m)
-            sbcFrom(cpu, m, a, false)
+            let a = aAbsX(&mut cpu, m)
+            sbcFrom(&mut cpu, m, a, false)
         }
         0xF9 => {
-            let a = aAbsY(cpu, m)
-            sbcFrom(cpu, m, a, false)
+            let a = aAbsY(&mut cpu, m)
+            sbcFrom(&mut cpu, m, a, false)
         }
         0xEF => {
-            let a = aLong(cpu, m)
-            sbcFrom(cpu, m, a, false)
+            let a = aLong(&mut cpu, m)
+            sbcFrom(&mut cpu, m, a, false)
         }
         0xFF => {
-            let a = aLongX(cpu, m)
-            sbcFrom(cpu, m, a, false)
+            let a = aLongX(&mut cpu, m)
+            sbcFrom(&mut cpu, m, a, false)
         }
         0xE1 => {
-            let a = aDpIndX(cpu, m)
-            sbcFrom(cpu, m, a, false)
+            let a = aDpIndX(&mut cpu, m)
+            sbcFrom(&mut cpu, m, a, false)
         }
         0xF1 => {
-            let a = aDpIndY(cpu, m)
-            sbcFrom(cpu, m, a, false)
+            let a = aDpIndY(&mut cpu, m)
+            sbcFrom(&mut cpu, m, a, false)
         }
         0xF2 => {
-            let a = aDpInd(cpu, m)
-            sbcFrom(cpu, m, a, false)
+            let a = aDpInd(&mut cpu, m)
+            sbcFrom(&mut cpu, m, a, false)
         } // SBC (dp)
         0xE7 => {
-            let a = aDpLong(cpu, m)
-            sbcFrom(cpu, m, a, false)
+            let a = aDpLong(&mut cpu, m)
+            sbcFrom(&mut cpu, m, a, false)
         }
         0xF7 => {
-            let a = aDpLongY(cpu, m)
-            sbcFrom(cpu, m, a, false)
+            let a = aDpLongY(&mut cpu, m)
+            sbcFrom(&mut cpu, m, a, false)
         }
         0xE3 => {
-            let a = aSr(cpu, m)
-            sbcFrom(cpu, m, a, true)
+            let a = aSr(&mut cpu, m)
+            sbcFrom(&mut cpu, m, a, true)
         }
         0xF3 => {
-            let a = aSrY(cpu, m)
-            sbcFrom(cpu, m, a, false)
+            let a = aSrY(&mut cpu, m)
+            sbcFrom(&mut cpu, m, a, false)
         }
 
         // ---- ASL / LSR / ROL / ROR (accumulator + memory) ----
         0x0A => {
-            accASL(cpu)
+            accASL(&mut cpu)
         }
         0x06 => {
-            let a = aDp(cpu, m)
-            rmwMem(cpu, m, a, true, 0)
+            let a = aDp(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, true, 0)
         }
         0x16 => {
-            let a = aDpX(cpu, m)
-            rmwMem(cpu, m, a, true, 0)
+            let a = aDpX(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, true, 0)
         }
         0x0E => {
-            let a = aAbs(cpu, m)
-            rmwMem(cpu, m, a, false, 0)
+            let a = aAbs(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, false, 0)
         }
         0x1E => {
-            let a = aAbsX(cpu, m)
-            rmwMem(cpu, m, a, false, 0)
+            let a = aAbsX(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, false, 0)
         }
         0x4A => {
-            accLSR(cpu)
+            accLSR(&mut cpu)
         }
         0x46 => {
-            let a = aDp(cpu, m)
-            rmwMem(cpu, m, a, true, 1)
+            let a = aDp(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, true, 1)
         }
         0x56 => {
-            let a = aDpX(cpu, m)
-            rmwMem(cpu, m, a, true, 1)
+            let a = aDpX(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, true, 1)
         }
         0x4E => {
-            let a = aAbs(cpu, m)
-            rmwMem(cpu, m, a, false, 1)
+            let a = aAbs(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, false, 1)
         }
         0x5E => {
-            let a = aAbsX(cpu, m)
-            rmwMem(cpu, m, a, false, 1)
+            let a = aAbsX(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, false, 1)
         }
         0x2A => {
-            accROL(cpu)
+            accROL(&mut cpu)
         }
         0x26 => {
-            let a = aDp(cpu, m)
-            rmwMem(cpu, m, a, true, 2)
+            let a = aDp(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, true, 2)
         }
         0x36 => {
-            let a = aDpX(cpu, m)
-            rmwMem(cpu, m, a, true, 2)
+            let a = aDpX(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, true, 2)
         }
         0x2E => {
-            let a = aAbs(cpu, m)
-            rmwMem(cpu, m, a, false, 2)
+            let a = aAbs(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, false, 2)
         }
         0x3E => {
-            let a = aAbsX(cpu, m)
-            rmwMem(cpu, m, a, false, 2)
+            let a = aAbsX(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, false, 2)
         }
         0x6A => {
-            accROR(cpu)
+            accROR(&mut cpu)
         }
         0x66 => {
-            let a = aDp(cpu, m)
-            rmwMem(cpu, m, a, true, 3)
+            let a = aDp(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, true, 3)
         }
         0x76 => {
-            let a = aDpX(cpu, m)
-            rmwMem(cpu, m, a, true, 3)
+            let a = aDpX(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, true, 3)
         }
         0x6E => {
-            let a = aAbs(cpu, m)
-            rmwMem(cpu, m, a, false, 3)
+            let a = aAbs(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, false, 3)
         }
         0x7E => {
-            let a = aAbsX(cpu, m)
-            rmwMem(cpu, m, a, false, 3)
+            let a = aAbsX(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, false, 3)
         }
 
         // ---- INC / DEC memory (accumulator forms 0x1A/0x3A handled above) ----
         0xE6 => {
-            let a = aDp(cpu, m)
-            rmwMem(cpu, m, a, true, 4)
+            let a = aDp(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, true, 4)
         }
         0xF6 => {
-            let a = aDpX(cpu, m)
-            rmwMem(cpu, m, a, true, 4)
+            let a = aDpX(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, true, 4)
         }
         0xEE => {
-            let a = aAbs(cpu, m)
-            rmwMem(cpu, m, a, false, 4)
+            let a = aAbs(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, false, 4)
         }
         0xFE => {
-            let a = aAbsX(cpu, m)
-            rmwMem(cpu, m, a, false, 4)
+            let a = aAbsX(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, false, 4)
         }
         0xC6 => {
-            let a = aDp(cpu, m)
-            rmwMem(cpu, m, a, true, 5)
+            let a = aDp(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, true, 5)
         }
         0xD6 => {
-            let a = aDpX(cpu, m)
-            rmwMem(cpu, m, a, true, 5)
+            let a = aDpX(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, true, 5)
         }
         0xCE => {
-            let a = aAbs(cpu, m)
-            rmwMem(cpu, m, a, false, 5)
+            let a = aAbs(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, false, 5)
         }
         0xDE => {
-            let a = aAbsX(cpu, m)
-            rmwMem(cpu, m, a, false, 5)
+            let a = aAbsX(&mut cpu, m)
+            rmwMem(&mut cpu, &mut m, a, false, 5)
         }
 
         // ---- TSB / TRB ----
         0x04 => {
-            let a = aDp(cpu, m)
-            tsbMem(cpu, m, a, true)
+            let a = aDp(&mut cpu, m)
+            tsbMem(&mut cpu, &mut m, a, true)
         }
         0x0C => {
-            let a = aAbs(cpu, m)
-            tsbMem(cpu, m, a, false)
+            let a = aAbs(&mut cpu, m)
+            tsbMem(&mut cpu, &mut m, a, false)
         }
         0x14 => {
-            let a = aDp(cpu, m)
-            trbMem(cpu, m, a, true)
+            let a = aDp(&mut cpu, m)
+            trbMem(&mut cpu, &mut m, a, true)
         }
         0x1C => {
-            let a = aAbs(cpu, m)
-            trbMem(cpu, m, a, false)
+            let a = aAbs(&mut cpu, m)
+            trbMem(&mut cpu, &mut m, a, false)
         }
 
         // ---- BIT ----
         0x89 => {
-            let v = immM(cpu, m)
-            bitImm(cpu, v)
+            let v = immM(&mut cpu, m)
+            bitImm(&mut cpu, v)
         }
         0x24 => {
-            let a = aDp(cpu, m)
-            bitMem(cpu, m, a, true)
+            let a = aDp(&mut cpu, m)
+            bitMem(&mut cpu, m, a, true)
         }
         0x34 => {
-            let a = aDpX(cpu, m)
-            bitMem(cpu, m, a, true)
+            let a = aDpX(&mut cpu, m)
+            bitMem(&mut cpu, m, a, true)
         }
         0x2C => {
-            let a = aAbs(cpu, m)
-            bitMem(cpu, m, a, false)
+            let a = aAbs(&mut cpu, m)
+            bitMem(&mut cpu, m, a, false)
         }
         0x3C => {
-            let a = aAbsX(cpu, m)
-            bitMem(cpu, m, a, false)
+            let a = aAbsX(&mut cpu, m)
+            bitMem(&mut cpu, m, a, false)
         }
 
         // ---- branches ----
         0x10 => {
-            branchIf(cpu, m, (cpu.p & FN) == 0)
+            branchIf(&mut cpu, m, (cpu.p & FN) == 0)
         } // BPL
         0x30 => {
-            branchIf(cpu, m, (cpu.p & FN) != 0)
+            branchIf(&mut cpu, m, (cpu.p & FN) != 0)
         } // BMI
         0x50 => {
-            branchIf(cpu, m, (cpu.p & FV) == 0)
+            branchIf(&mut cpu, m, (cpu.p & FV) == 0)
         } // BVC
         0x70 => {
-            branchIf(cpu, m, (cpu.p & FV) != 0)
+            branchIf(&mut cpu, m, (cpu.p & FV) != 0)
         } // BVS
         0x90 => {
-            branchIf(cpu, m, (cpu.p & FC) == 0)
+            branchIf(&mut cpu, m, (cpu.p & FC) == 0)
         } // BCC
         0xB0 => {
-            branchIf(cpu, m, (cpu.p & FC) != 0)
+            branchIf(&mut cpu, m, (cpu.p & FC) != 0)
         } // BCS
         0xD0 => {
-            branchIf(cpu, m, (cpu.p & FZ) == 0)
+            branchIf(&mut cpu, m, (cpu.p & FZ) == 0)
         } // BNE
         0xF0 => {
-            branchIf(cpu, m, (cpu.p & FZ) != 0)
+            branchIf(&mut cpu, m, (cpu.p & FZ) != 0)
         } // BEQ
         0x80 => {
-            branchIf(cpu, m, true)
+            branchIf(&mut cpu, m, true)
         } // BRA
         0x82 => { // BRL — 16-bit relative
-            let off = fetch16(cpu, m)
+            let off = fetch16(&mut cpu, m)
             let soff: i64 = if off >= 0x8000 {
                 off - 0x10000
             } else {
@@ -2898,19 +2898,19 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
 
         // ---- jumps ----
         0x4C => {
-            cpu.pc = fetch16(cpu, m)
+            cpu.pc = fetch16(&mut cpu, m)
         } // JMP abs
         0x5C => { // JML/JMP long
-            let t = fetch24(cpu, m)
+            let t = fetch24(&mut cpu, m)
             cpu.pc = t & 0xFFFF
             cpu.pbr = (t >> 16) & 0xFF
         }
         0x6C => {
-            let ptr = fetch16(cpu, m)
+            let ptr = fetch16(&mut cpu, m)
             cpu.pc = readPtr16(m, ptr)
         } // JMP (abs), ptr in bank 0
         0x7C => { // JMP (abs,X) — pointer read within the program bank
-            let base = fetch16(cpu, m)
+            let base = fetch16(&mut cpu, m)
             let a0 = (base + cpu.x) & 0xFFFF
             let lo = memRead(m, (cpu.pbr << 16) | a0)
             let hi = memRead(m, (cpu.pbr << 16) | ((a0 + 1) & 0xFFFF))
@@ -2919,15 +2919,15 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
         0xFC => { // JSR (abs,X) — push return, then jump through the pointer at
             // (abs+X) in the program bank. DKC's vblank dispatcher uses this; leaving
             // it unimplemented desynced PC and derailed the level load into $7003.
-            let base = fetch16(cpu, m)
-            push16(cpu, m, (cpu.pc - 1) & 0xFFFF)
+            let base = fetch16(&mut cpu, m)
+            push16(&mut cpu, &mut m, (cpu.pc - 1) & 0xFFFF)
             let a0 = (base + cpu.x) & 0xFFFF
             let lo = memRead(m, (cpu.pbr << 16) | a0)
             let hi = memRead(m, (cpu.pbr << 16) | ((a0 + 1) & 0xFFFF))
             cpu.pc = lo | (hi << 8)
         }
         0xDC => { // JML [abs] — 24-bit pointer in bank 0
-            let ptr = fetch16(cpu, m)
+            let ptr = fetch16(&mut cpu, m)
             let t = readPtr24(m, ptr)
             cpu.pc = t & 0xFFFF
             cpu.pbr = (t >> 16) & 0xFF
@@ -2935,152 +2935,152 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
 
         // ---- subroutine call/return ----
         0x20 => { // JSR abs — push PC of last operand byte (return - 1)
-            let target = fetch16(cpu, m)
-            push16(cpu, m, (cpu.pc - 1) & 0xFFFF)
+            let target = fetch16(&mut cpu, m)
+            push16(&mut cpu, &mut m, (cpu.pc - 1) & 0xFFFF)
             cpu.pc = target
         }
         0x60 => { // RTS
-            let addr = pull16(cpu, m)
+            let addr = pull16(&mut cpu, &mut m)
             cpu.pc = (addr + 1) & 0xFFFF
         }
         0x22 => { // JSL long — push PBR then PC-1 (full 16-bit stack)
-            let target = fetch24(cpu, m)
-            push8f(cpu, m, cpu.pbr)
-            push16f(cpu, m, (cpu.pc - 1) & 0xFFFF)
-            clampEmuStack(cpu)
+            let target = fetch24(&mut cpu, m)
+            push8f(&mut cpu, &mut m, cpu.pbr)
+            push16f(&mut cpu, &mut m, (cpu.pc - 1) & 0xFFFF)
+            clampEmuStack(&mut cpu)
             cpu.pc = target & 0xFFFF
             cpu.pbr = (target >> 16) & 0xFF
         }
         0x6B => { // RTL — pull PC then PBR (full stack)
-            let addr = pull16f(cpu, m)
-            let bank = pull8f(cpu, m)
-            clampEmuStack(cpu)
+            let addr = pull16f(&mut cpu, &mut m)
+            let bank = pull8f(&mut cpu, &mut m)
+            clampEmuStack(&mut cpu)
             cpu.pc = (addr + 1) & 0xFFFF
             cpu.pbr = bank & 0xFF
         }
 
         // ---- PEI / PER (push effective address; full 16-bit stack) ----
         0xD4 => { // PEI — push the 16-bit word at a direct-page pointer
-            let ad = aDp(cpu, m)
+            let ad = aDp(&mut cpu, m)
             let v = readPtr16(m, ad)
-            push16f(cpu, m, v)
-            clampEmuStack(cpu)
+            push16f(&mut cpu, &mut m, v)
+            clampEmuStack(&mut cpu)
         }
         0x62 => { // PER — push PC + 16-bit relative
-            let off = fetch16(cpu, m)
+            let off = fetch16(&mut cpu, m)
             let soff: i64 = if off >= 0x8000 {
                 off - 0x10000
             } else {
                 off
             }
-            push16f(cpu, m, (cpu.pc + soff) & 0xFFFF)
-            clampEmuStack(cpu)
+            push16f(&mut cpu, &mut m, (cpu.pc + soff) & 0xFFFF)
+            clampEmuStack(&mut cpu)
         }
 
         // ---- stack push/pull ----
         0x48 => { // PHA
             if m8(cpu) {
-                push8(cpu, m, cpu.a)
+                push8(&mut cpu, &mut m, cpu.a)
             } else {
-                push16(cpu, m, cpu.a)
+                push16(&mut cpu, &mut m, cpu.a)
             }
         }
         0x68 => { // PLA
             if m8(cpu) {
-                let v = pull8(cpu, m)
+                let v = pull8(&mut cpu, &mut m)
                 cpu.a = (cpu.a & 0xFF00) | v
-                setNZ8(cpu, v)
+                setNZ8(&mut cpu, v)
             } else {
-                cpu.a = pull16(cpu, m)
-                setNZ16(cpu, cpu.a)
+                cpu.a = pull16(&mut cpu, &mut m)
+                setNZ16(&mut cpu, cpu.a)
             }
         }
         0xDA => { // PHX
             if x8(cpu) {
-                push8(cpu, m, cpu.x)
+                push8(&mut cpu, &mut m, cpu.x)
             } else {
-                push16(cpu, m, cpu.x)
+                push16(&mut cpu, &mut m, cpu.x)
             }
         }
         0xFA => { // PLX
             if x8(cpu) {
-                cpu.x = pull8(cpu, m)
-                setNZ8(cpu, cpu.x)
+                cpu.x = pull8(&mut cpu, &mut m)
+                setNZ8(&mut cpu, cpu.x)
             } else {
-                cpu.x = pull16(cpu, m)
-                setNZ16(cpu, cpu.x)
+                cpu.x = pull16(&mut cpu, &mut m)
+                setNZ16(&mut cpu, cpu.x)
             }
         }
         0x5A => { // PHY
             if x8(cpu) {
-                push8(cpu, m, cpu.y)
+                push8(&mut cpu, &mut m, cpu.y)
             } else {
-                push16(cpu, m, cpu.y)
+                push16(&mut cpu, &mut m, cpu.y)
             }
         }
         0x7A => { // PLY
             if x8(cpu) {
-                cpu.y = pull8(cpu, m)
-                setNZ8(cpu, cpu.y)
+                cpu.y = pull8(&mut cpu, &mut m)
+                setNZ8(&mut cpu, cpu.y)
             } else {
-                cpu.y = pull16(cpu, m)
-                setNZ16(cpu, cpu.y)
+                cpu.y = pull16(&mut cpu, &mut m)
+                setNZ16(&mut cpu, cpu.y)
             }
         }
         0x08 => { // PHP — status pushed as-is (8-bit)
-            push8(cpu, m, cpu.p)
+            push8(&mut cpu, &mut m, cpu.p)
         }
         0x28 => { // PLP
-            cpu.p = pull8(cpu, m)
-            applyEmulationConstraints(cpu) // e forces M/X set + truncates
+            cpu.p = pull8(&mut cpu, &mut m)
+            applyEmulationConstraints(&mut cpu) // e forces M/X set + truncates
             if (cpu.p & FX) != 0 { // native X=1 narrows index registers
                 cpu.x = cpu.x & 0xFF
                 cpu.y = cpu.y & 0xFF
             }
         }
         0x8B => { // PHB — data bank (full-stack op)
-            push8f(cpu, m, cpu.dbr)
-            clampEmuStack(cpu)
+            push8f(&mut cpu, &mut m, cpu.dbr)
+            clampEmuStack(&mut cpu)
         }
         0xAB => { // PLB
-            cpu.dbr = pull8f(cpu, m)
-            clampEmuStack(cpu)
-            setNZ8(cpu, cpu.dbr)
+            cpu.dbr = pull8f(&mut cpu, &mut m)
+            clampEmuStack(&mut cpu)
+            setNZ8(&mut cpu, cpu.dbr)
         }
         0x4B => { // PHK — program bank (full-stack op)
-            push8f(cpu, m, cpu.pbr)
-            clampEmuStack(cpu)
+            push8f(&mut cpu, &mut m, cpu.pbr)
+            clampEmuStack(&mut cpu)
         }
         0x0B => { // PHD — direct-page register (always 16-bit, full stack)
-            push16f(cpu, m, cpu.d)
-            clampEmuStack(cpu)
+            push16f(&mut cpu, &mut m, cpu.d)
+            clampEmuStack(&mut cpu)
         }
         0x2B => { // PLD
-            cpu.d = pull16f(cpu, m)
-            clampEmuStack(cpu)
-            setNZ16(cpu, cpu.d)
+            cpu.d = pull16f(&mut cpu, &mut m)
+            clampEmuStack(&mut cpu)
+            setNZ16(&mut cpu, cpu.d)
         }
         0xF4 => { // PEA — push a 16-bit immediate (full stack)
-            let v = fetch16(cpu, m)
-            push16f(cpu, m, v)
-            clampEmuStack(cpu)
+            let v = fetch16(&mut cpu, m)
+            push16f(&mut cpu, &mut m, v)
+            clampEmuStack(&mut cpu)
         }
 
         // ---- software interrupts BRK / COP ----
         0x00 => {
-            softInterrupt(cpu, m, 0xFFE6, 0xFFFE)
+            softInterrupt(&mut cpu, &mut m, 0xFFE6, 0xFFFE)
         } // BRK
         0x02 => {
-            softInterrupt(cpu, m, 0xFFE4, 0xFFF4)
+            softInterrupt(&mut cpu, &mut m, 0xFFE4, 0xFFF4)
         } // COP
         0x40 => { // RTI
-            cpu.p = pull8(cpu, m)
-            let addr = pull16(cpu, m)
+            cpu.p = pull8(&mut cpu, &mut m)
+            let addr = pull16(&mut cpu, &mut m)
             if cpu.e == 0 {
-                cpu.pbr = pull8(cpu, m)
+                cpu.pbr = pull8(&mut cpu, &mut m)
             }
             cpu.pc = addr
-            applyEmulationConstraints(cpu)
+            applyEmulationConstraints(&mut cpu)
             if (cpu.p & FX) != 0 {
                 cpu.x = cpu.x & 0xFF
                 cpu.y = cpu.y & 0xFF
@@ -3089,15 +3089,15 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
 
         // ---- block moves (one byte per step; PC rewinds until C wraps) ----
         0x54 => {
-            blockMove(cpu, m, 1)
+            blockMove(&mut cpu, &mut m, 1)
         } // MVN — ascending
         0x44 => {
-            blockMove(cpu, m, -1)
+            blockMove(&mut cpu, &mut m, -1)
         } // MVP — descending
 
         // ---- WDM (2-byte reserved no-op), WAI / STP (no interrupts in tests) ----
         0x42 => {
-            let sig = fetch8(cpu, m)
+            let sig = fetch8(&mut cpu, m)
         } // WDM consumes its signature byte
         0xCB => {
             cpuWaiting = true

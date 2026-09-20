@@ -38,7 +38,7 @@ fn fillEllipse(fb: &mut [u32; 61440], cx: i64, cy: i64, rx: i64, ry: i64, c: u32
         var x = -rx
         while x <= rx {
             if x * x * ry2 + y * y * rx2 <= rx2 * ry2 {
-                putPixel(fb, cx + x, cy + y, c)
+                putPixel(&mut fb, cx + x, cy + y, c)
             }
             x = x + 1
         }
@@ -90,7 +90,7 @@ fn fillTri(fb: &mut [u32; 61440], x0: i64, y0: i64, x1: i64, y1: i64, x2: i64, y
             let allNeg = d0 <= 0 && d1 <= 0 && d2 <= 0
             let allPos = d0 >= 0 && d1 >= 0 && d2 >= 0
             if allNeg || allPos {
-                putPixel(fb, px, py, c)
+                putPixel(&mut fb, px, py, c)
             }
             px = px + 1
         }
@@ -168,7 +168,7 @@ fn drawChar(fb: &mut [u32; 61440], ch: u8, x: i64, y: i64, scale: i64, c: u32, f
                 while dy < scale {
                     var dx: i64 = 0
                     while dx < scale {
-                        putPixel(fb, x + col * scale + dx, y + row * scale + dy, c)
+                        putPixel(&mut fb, x + col * scale + dx, y + row * scale + dy, c)
                         dx = dx + 1
                     }
                     dy = dy + 1
@@ -189,7 +189,7 @@ fn drawText(fb: &mut [u32; 61440], s: &string, x: i64, y: i64, scale: i64, c: u3
     var i: i64 = 0
     var cx = x
     while i < s.len {
-        drawChar(fb, s[i], cx, y, scale, c, font, glyphs)
+        drawChar(&mut fb, s[i], cx, y, scale, c, font, glyphs)
         cx = cx + 6 * scale
         i = i + 1
     }
@@ -197,7 +197,7 @@ fn drawText(fb: &mut [u32; 61440], s: &string, x: i64, y: i64, scale: i64, c: u3
 
 fn drawTextCentered(fb: &mut [u32; 61440], s: &string, y: i64, scale: i64, c: u32, font: &string, glyphs: &[string; 32]): void {
     let x = (256 - textWidth(s, scale)) / 2
-    drawText(fb, s, x, y, scale, c, font, glyphs)
+    drawText(&mut fb, s, x, y, scale, c, font, glyphs)
 }
 
 // The chihuahua mascot as an NES-style pixel sprite: a 28-wide x 26-tall grid of
@@ -279,7 +279,7 @@ fn drawChihuahua(fb: &mut [u32; 61440], ox: i64, oy: i64, scale: i64): void {
                     while dy < scale {
                         var dx: i64 = 0
                         while dx < scale {
-                            putPixel(fb, ox + c * scale + dx, oy + r * scale + dy, color)
+                            putPixel(&mut fb, ox + c * scale + dx, oy + r * scale + dy, color)
                             dx = dx + 1
                         }
                         dy = dy + 1
@@ -302,15 +302,15 @@ pub fn renderSplash(fb: &mut [u32; 61440]): void {
     let font = fontChars()
     let glyphs = fontGlyphs()
 
-    clear(fb, bg)
-    drawChihuahua(fb, 72, 2, 4)
+    clear(&mut fb, bg)
+    drawChihuahua(&mut fb, 72, 2, 4)
 
-    drawTextCentered(fb, "MILO NES", 110, 4, gold, font, glyphs)
-    drawTextCentered(fb, "EMULATOR", 144, 2, cream, font, glyphs)
+    drawTextCentered(&mut fb, "MILO NES", 110, 4, gold, font, glyphs)
+    drawTextCentered(&mut fb, "EMULATOR", 144, 2, cream, font, glyphs)
 
-    drawTextCentered(fb, "ARROWS - MOVE", 168, 2, dim, font, glyphs)
-    drawTextCentered(fb, "Z=A   X=B", 183, 2, dim, font, glyphs)
-    drawTextCentered(fb, "ENTER - START", 198, 2, dim, font, glyphs)
-    drawTextCentered(fb, "RSHIFT - SELECT", 213, 2, dim, font, glyphs)
-    drawTextCentered(fb, "PRESS ANY KEY", 228, 2, gold, font, glyphs)
+    drawTextCentered(&mut fb, "ARROWS - MOVE", 168, 2, dim, font, glyphs)
+    drawTextCentered(&mut fb, "Z=A   X=B", 183, 2, dim, font, glyphs)
+    drawTextCentered(&mut fb, "ENTER - START", 198, 2, dim, font, glyphs)
+    drawTextCentered(&mut fb, "RSHIFT - SELECT", 213, 2, dim, font, glyphs)
+    drawTextCentered(&mut fb, "PRESS ANY KEY", 228, 2, gold, font, glyphs)
 }

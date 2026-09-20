@@ -39,7 +39,7 @@ fn main(): i32 {
     print("reset PC = $" + hex2((cpu.pc >> 8) & 0xFF) + hex2(cpu.pc & 0xFF))
     var n: i64 = 0
     while n < 5 {
-        step(cpu, m)
+        step(&mut cpu, &mut m)
         n = n + 1
     }
 

@@ -58,7 +58,7 @@ fn main(): i32 {
     var lineClock: i64 = 0
     var wasVblank = false
     while steps < maxSteps {
-        step(cpu, m)
+        step(&mut cpu, &mut m)
         lineClock = lineClock + 1
         if lineClock >= 130 {
             lineClock = 0
@@ -70,7 +70,7 @@ fn main(): i32 {
         let inVblank = m.vdpLine >= 224
         if inVblank && !wasVblank {
             if (m.vdpRegs[1] & 0x20) != 0 {
-                deliverInterrupt(cpu, m, 6)
+                deliverInterrupt(&mut cpu, &mut m, 6)
             }
         }
         wasVblank = inVblank

@@ -180,19 +180,19 @@ pub fn newApu(): Apu {
 pub fn apuWrite(apu: &mut Apu, reg: i64, val: u8): void {
     let v = val as i64
     if reg <= 0x03 {
-        writePulse(apu.pulse1, reg, v)
+        writePulse(&mut apu.pulse1, reg, v)
     } else if reg <= 0x07 {
-        writePulse(apu.pulse2, reg - 0x04, v)
+        writePulse(&mut apu.pulse2, reg - 0x04, v)
     } else if reg <= 0x0B {
-        writeTriangle(apu.triangle, reg - 0x08, v)
+        writeTriangle(&mut apu.triangle, reg - 0x08, v)
     } else if reg <= 0x0F {
-        writeNoise(apu.noise, reg - 0x0C, v)
+        writeNoise(&mut apu.noise, reg - 0x0C, v)
     } else if reg <= 0x13 {
-        writeDmc(apu.dmc, reg - 0x10, v)
+        writeDmc(&mut apu.dmc, reg - 0x10, v)
     } else if reg == 0x15 {
-        writeStatus(apu, v)
+        writeStatus(&mut apu, v)
     } else if reg == 0x17 {
-        writeFrameCounter(apu, v)
+        writeFrameCounter(&mut apu, v)
     }
 }
 
@@ -310,8 +310,8 @@ fn writeFrameCounter(apu: &mut Apu, v: i64): void {
     apu.frameCycle = 0
     // 5-step mode immediately clocks a quarter + half frame.
     if apu.frameMode == 1 {
-        quarterFrame(apu)
-        halfFrame(apu)
+        quarterFrame(&mut apu)
+        halfFrame(&mut apu)
     }
 }
 
@@ -347,21 +347,21 @@ pub fn apuReadStatus(apu: &mut Apu): u8 {
 pub fn apuStep(apu: &mut Apu, cycles: i64): void {
     var c: i64 = 0
     while c < cycles {
-        clockTriangleTimer(apu.triangle) // triangle timer runs at the CPU rate
-        clockDmc(apu.dmc) // DMC timer runs at the CPU rate
+        clockTriangleTimer(&mut apu.triangle) // triangle timer runs at the CPU rate
+        clockDmc(&mut apu.dmc) // DMC timer runs at the CPU rate
         if apu.cpuParity == 0 {
             // pulse/noise timers run at half the CPU rate (one APU cycle)
-            clockPulseTimer(apu.pulse1)
-            clockPulseTimer(apu.pulse2)
-            clockNoiseTimer(apu.noise)
+            clockPulseTimer(&mut apu.pulse1)
+            clockPulseTimer(&mut apu.pulse2)
+            clockNoiseTimer(&mut apu.noise)
         }
         apu.cpuParity = apu.cpuParity ^ 1
-        stepFrameCounter(apu)
+        stepFrameCounter(&mut apu)
 
         apu.sampleAccum = apu.sampleAccum + 1.0
         if apu.sampleAccum >= CYCLES_PER_SAMPLE {
             apu.sampleAccum = apu.sampleAccum - CYCLES_PER_SAMPLE
-            emitSample(apu)
+            emitSample(&mut apu)
         }
         c = c + 1
     }
@@ -374,15 +374,15 @@ fn stepFrameCounter(apu: &mut Apu): void {
     let fc = apu.frameCycle
     if apu.frameMode == 0 {
         if fc == 7457 {
-            quarterFrame(apu)
+            quarterFrame(&mut apu)
         } else if fc == 14913 {
-            quarterFrame(apu)
-            halfFrame(apu)
+            quarterFrame(&mut apu)
+            halfFrame(&mut apu)
         } else if fc == 22371 {
-            quarterFrame(apu)
+            quarterFrame(&mut apu)
         } else if fc == 29829 {
-            quarterFrame(apu)
-            halfFrame(apu)
+            quarterFrame(&mut apu)
+            halfFrame(&mut apu)
             if !apu.frameInhibit {
                 apu.frameIrq = true
             }
@@ -391,15 +391,15 @@ fn stepFrameCounter(apu: &mut Apu): void {
         }
     } else {
         if fc == 7457 {
-            quarterFrame(apu)
+            quarterFrame(&mut apu)
         } else if fc == 14913 {
-            quarterFrame(apu)
-            halfFrame(apu)
+            quarterFrame(&mut apu)
+            halfFrame(&mut apu)
         } else if fc == 22371 {
-            quarterFrame(apu)
+            quarterFrame(&mut apu)
         } else if fc == 37281 {
-            quarterFrame(apu)
-            halfFrame(apu)
+            quarterFrame(&mut apu)
+            halfFrame(&mut apu)
         } else if fc >= 37282 {
             apu.frameCycle = 0
         }
@@ -407,17 +407,17 @@ fn stepFrameCounter(apu: &mut Apu): void {
 }
 
 fn quarterFrame(apu: &mut Apu): void {
-    clockPulseEnvelope(apu.pulse1)
-    clockPulseEnvelope(apu.pulse2)
-    clockNoiseEnvelope(apu.noise)
-    clockTriangleLinear(apu.triangle)
+    clockPulseEnvelope(&mut apu.pulse1)
+    clockPulseEnvelope(&mut apu.pulse2)
+    clockNoiseEnvelope(&mut apu.noise)
+    clockTriangleLinear(&mut apu.triangle)
 }
 
 fn halfFrame(apu: &mut Apu): void {
-    clockPulseLength(apu.pulse1)
-    clockPulseLength(apu.pulse2)
-    clockPulseSweep(apu.pulse1)
-    clockPulseSweep(apu.pulse2)
+    clockPulseLength(&mut apu.pulse1)
+    clockPulseLength(&mut apu.pulse2)
+    clockPulseSweep(&mut apu.pulse1)
+    clockPulseSweep(&mut apu.pulse2)
     if !apu.triangle.control && apu.triangle.length > 0 {
         apu.triangle.length = apu.triangle.length - 1
     }

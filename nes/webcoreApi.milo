@@ -60,7 +60,7 @@ pub fn createNes(rom: Vec<u8>): NesHandle {
         }
     }
     var bus = newBus(cart)
-    var cpu = newCpuReset(bus)
+    var cpu = newCpuReset(&mut bus)
     return NesHandle {
         cpu: cpu, bus: bus,
     }
@@ -78,30 +78,30 @@ pub fn stepFrame(h: &mut NesHandle): void {
     let startFrame = h.bus.ppu.frame
     while h.bus.ppu.frame == startFrame {
         let before = h.cpu.cyc
-        step(h.cpu, h.bus)
+        step(&mut h.cpu, &mut h.bus)
         let used = h.cpu.cyc - before
         var k: i64 = 0
         while k < used * 3 {
-            clockPpu(h.bus)
+            clockPpu(&mut h.bus)
             k = k + 1
         }
-        clockApu(h.bus, used)
-        serviceInterrupts(h.cpu, h.bus)
+        clockApu(&mut h.bus, used)
+        serviceInterrupts(&mut h.cpu, &mut h.bus)
     }
-    renderFrame(h.bus.ppu)
+    renderFrame(&mut h.bus.ppu)
 }
 
 // Single CPU instruction + its PPU/APU catch-up — for backend trace diffing.
 pub fn stepOne(h: &mut NesHandle): void {
     let before = h.cpu.cyc
-    step(h.cpu, h.bus)
+    step(&mut h.cpu, &mut h.bus)
     let used = h.cpu.cyc - before
     var k: i64 = 0
     while k < used * 3 {
-        clockPpu(h.bus)
+        clockPpu(&mut h.bus)
         k = k + 1
     }
-    clockApu(h.bus, used)
-    serviceInterrupts(h.cpu, h.bus)
+    clockApu(&mut h.bus, used)
+    serviceInterrupts(&mut h.cpu, &mut h.bus)
 }
 

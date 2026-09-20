@@ -38,7 +38,7 @@ pub fn fillRect(fb: &mut [u32; 230400], x: i64, y: i64, w: i64, h: i64, c: u32):
     while yy < h {
         var xx: i64 = 0
         while xx < w {
-            putPixel(fb, x + xx, y + yy, c)
+            putPixel(&mut fb, x + xx, y + yy, c)
             xx = xx + 1
         }
         yy = yy + 1
@@ -148,7 +148,7 @@ fn drawChar(fb: &mut [u32; 230400], ch: u8, x: i64, y: i64, scale: i64, c: u32, 
         while col < 5 {
             let k = row * 5 + col
             if k < g.len && g[k] == 35 { // '#'
-                fillRect(fb, x + col * scale, y + row * scale, scale, scale, c)
+                fillRect(&mut fb, x + col * scale, y + row * scale, scale, scale, c)
             }
             col = col + 1
         }
@@ -168,7 +168,7 @@ pub fn drawText(fb: &mut [u32; 230400], s: &string, x: i64, y: i64, scale: i64, 
     var i: i64 = 0
     var cx = x
     while i < s.len {
-        drawChar(fb, s[i], cx, y, scale, c, font, glyphs)
+        drawChar(&mut fb, s[i], cx, y, scale, c, font, glyphs)
         cx = cx + 6 * scale
         i = i + 1
     }
@@ -176,5 +176,5 @@ pub fn drawText(fb: &mut [u32; 230400], s: &string, x: i64, y: i64, scale: i64, 
 
 pub fn drawTextCentered(fb: &mut [u32; 230400], s: &string, y: i64, scale: i64, c: u32, font: &string, glyphs: &[string; 49]): void {
     let x = (MENU_W - textWidth(s, scale)) / 2
-    drawText(fb, s, x, y, scale, c, font, glyphs)
+    drawText(&mut fb, s, x, y, scale, c, font, glyphs)
 }

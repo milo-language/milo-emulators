@@ -46,25 +46,25 @@ fn nextTok(t: &mut Toks): i64 {
 // Read one state record's 10 registers into cpu, then ramN (addr,val) pairs
 // into memory. Field order matches harteConv.ts emitState.
 fn loadRegs(cpu: &mut Cpu, m: &mut Mem, t: &mut Toks): void {
-    cpu.a = nextTok(t)
-    cpu.x = nextTok(t)
-    cpu.y = nextTok(t)
-    cpu.s = nextTok(t)
-    cpu.d = nextTok(t)
-    cpu.pc = nextTok(t)
-    cpu.p = nextTok(t)
-    cpu.dbr = nextTok(t)
-    cpu.pbr = nextTok(t)
-    cpu.e = nextTok(t)
+    cpu.a = nextTok(&mut t)
+    cpu.x = nextTok(&mut t)
+    cpu.y = nextTok(&mut t)
+    cpu.s = nextTok(&mut t)
+    cpu.d = nextTok(&mut t)
+    cpu.pc = nextTok(&mut t)
+    cpu.p = nextTok(&mut t)
+    cpu.dbr = nextTok(&mut t)
+    cpu.pbr = nextTok(&mut t)
+    cpu.e = nextTok(&mut t)
     if cpu.e == 1 {
         cpu.s = 0x0100 | (cpu.s & 0xFF) // emulation forces stack high byte to 01
     }
-    let ramN = nextTok(t)
+    let ramN = nextTok(&mut t)
     var j: i64 = 0
     while j < ramN {
-        let addr = nextTok(t)
-        let val = nextTok(t)
-        memWrite(m, addr, val)
+        let addr = nextTok(&mut t)
+        let val = nextTok(&mut t)
+        memWrite(&mut m, addr, val)
         j = j + 1
     }
 }
@@ -72,17 +72,17 @@ fn loadRegs(cpu: &mut Cpu, m: &mut Mem, t: &mut Toks): void {
 // Compare cpu/memory against the "final" record; consume it either way.
 // Returns "" on match or a description of the first mismatch.
 fn checkFinal(cpu: &Cpu, m: &Mem, t: &mut Toks): string {
-    let fa = nextTok(t)
-    let fx = nextTok(t)
-    let fy = nextTok(t)
-    let fs = nextTok(t)
-    let fd = nextTok(t)
-    let fpc = nextTok(t)
-    let fp = nextTok(t)
-    let fdbr = nextTok(t)
-    let fpbr = nextTok(t)
-    let fe = nextTok(t)
-    let ramN = nextTok(t)
+    let fa = nextTok(&mut t)
+    let fx = nextTok(&mut t)
+    let fy = nextTok(&mut t)
+    let fs = nextTok(&mut t)
+    let fd = nextTok(&mut t)
+    let fpc = nextTok(&mut t)
+    let fp = nextTok(&mut t)
+    let fdbr = nextTok(&mut t)
+    let fpbr = nextTok(&mut t)
+    let fe = nextTok(&mut t)
+    let ramN = nextTok(&mut t)
 
     var mismatch = ""
     if cpu.a != fa && mismatch == "" {
@@ -118,8 +118,8 @@ fn checkFinal(cpu: &Cpu, m: &Mem, t: &mut Toks): string {
 
     var j: i64 = 0
     while j < ramN {
-        let addr = nextTok(t)
-        let want = nextTok(t)
+        let addr = nextTok(&mut t)
+        let want = nextTok(&mut t)
         let got = memRead(m, addr)
         if got != want && mismatch == "" {
             mismatch = "RAM[" + hex(addr) + "] got " + hex(got) + " want " + hex(want)
@@ -154,7 +154,7 @@ fn main(): i32 {
     var t = Toks {
         s: raw, pos: 0
     }
-    let total = nextTok(t)
+    let total = nextTok(&mut t)
     var cpu = Cpu {
         a: 0, x: 0, y: 0, s: 0, d: 0, pc: 0, p: 0, dbr: 0, pbr: 0, e: 0
     }
@@ -167,10 +167,10 @@ fn main(): i32 {
         if i >= maxCases {
             break
         }
-        memReset(m)
-        loadRegs(cpu, m, t)
-        step(cpu, m)
-        let mismatch = checkFinal(cpu, m, t)
+        memReset(&mut m)
+        loadRegs(&mut cpu, &mut m, &mut t)
+        step(&mut cpu, &mut m)
+        let mismatch = checkFinal(cpu, m, &mut t)
         if mismatch == "" {
             passed = passed + 1
         } else {

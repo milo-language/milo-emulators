@@ -128,7 +128,7 @@ fn runFrame(cpu: &mut M68k, m: &mut Mem) {
             if hIntCounter == 0 {
                 hIntCounter = m.vdpRegs[10]
                 if (m.vdpRegs[0] & 0x10) != 0 {
-                    deliverInterrupt(cpu, m, 4)
+                    deliverInterrupt(&mut cpu, &mut m, 4)
                 }
             } else {
                 hIntCounter = hIntCounter - 1
@@ -140,19 +140,19 @@ fn runFrame(cpu: &mut M68k, m: &mut Mem) {
         var k: i64 = 0
         while k < 130 {
             if !cpu.halted {
-                step(cpu, m)
+                step(&mut cpu, &mut m)
             }
             if z80Running(m) && (k & 1) == 0 {
-                stepZ80(m.z80)
+                stepZ80(&mut m.z80)
             }
             k = k + 1
         }
         if line == 224 {
             if (m.vdpRegs[1] & 0x20) != 0 {
-                deliverInterrupt(cpu, m, 6)
+                deliverInterrupt(&mut cpu, &mut m, 6)
             }
             if z80Running(m) {
-                z80Interrupt(m.z80) // Z80 INT tied to VBlank (drives sound timers)
+                z80Interrupt(&mut m.z80) // Z80 INT tied to VBlank (drives sound timers)
             }
         }
         line = line + 1
@@ -164,7 +164,7 @@ fn queueAudio(synth: &mut Synth, m: &Mem, dev: u32) {
     var buf: Vec<u8> = Vec.new()
     var sa: i64 = 0
     while sa < 735 {
-        let smp = synthSample(synth, m.z80)
+        let smp = synthSample(&mut synth, &mut m.z80)
         buf.push((smp.l & 0xFF) as u8)
         buf.push(((smp.l >> 8) & 0xFF) as u8)
         buf.push((smp.r & 0xFF) as u8)
@@ -243,7 +243,7 @@ fn main(): i32 {
     var m = newMem()
     m.genesis = true
     m.z80.gen = true
-    loadRom(m, cart)
+    loadRom(&mut m, cart)
     let sp = ((m.ram[0] as i64) << 24) | ((m.ram[1] as i64) << 16) | ((m.ram[2] as i64) << 8) | (m.ram[3] as i64)
     let pc = ((m.ram[4] as i64) << 24) | ((m.ram[5] as i64) << 16) | ((m.ram[6] as i64) << 8) | (m.ram[7] as i64)
     var cpu = newCpu()
@@ -449,13 +449,13 @@ fn main(): i32 {
             } else if audioDev != 0 && SDL_GetQueuedAudioSize(audioDev) >= 24000 {
                 SDL_Delay(1)
             } else {
-                runFrame(cpu, m)
+                runFrame(&mut cpu, &mut m)
                 if audioDev != 0 {
-                    queueAudio(synth, m, audioDev)
+                    queueAudio(&mut synth, m, audioDev)
                 }
                 let fb = renderIndexed(m)
                 let w = frameWidth(m)
-                blit(m, fb, w, maxW, rgba)
+                blit(m, fb, w, maxW, &mut rgba)
                 SDL_UpdateTexture(tex, 0 as *u8, rgba.ptr() as *u8, (maxW * 4) as i32)
                 SDL_RenderClear(ren)
                 // Copy only the live w*h region of the (maxW-wide) texture, scaled to

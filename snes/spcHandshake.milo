@@ -19,13 +19,13 @@ fn main(): i32 {
     var spc = Spc {
         a: 0, x: 0, y: 0, sp: 0, pc: 0, psw: 0
     }
-    spcReset(spc, m)
+    spcReset(&mut spc, &mut m)
     print("SPC reset PC = $" + hex2((spc.pc >> 8) & 0xFF) + hex2(spc.pc & 0xFF) + " (want $FFC0)")
 
     // Run the IPL until it posts the ready bytes (or give up).
     var i: i64 = 0
     while i < 200000 {
-        spcStep(spc, m)
+        spcStep(&mut spc, &mut m)
         if apuReadPort(m, 0) == 0xAA && apuReadPort(m, 1) == 0xBB {
             break
         }

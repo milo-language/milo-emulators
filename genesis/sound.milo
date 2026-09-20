@@ -75,44 +75,44 @@ fn fmChannel4op(s: &mut Synth, z: &Z80, c: i64, part: i64, ci: i64, baseInc: i64
     if fb > 0 {
         fbIn = (s.fbMem[c] >> (9 - fb))
     }
-    let o1 = operatorOut(s, z, c, part, ci, 1, baseInc, fbIn)
+    let o1 = operatorOut(&mut s, z, c, part, ci, 1, baseInc, fbIn)
     s.fbMem[c] = o1
     var out: i64 = 0
     if alg == 0 {
-        let o2 = operatorOut(s, z, c, part, ci, 2, baseInc, o1)
-        let o3 = operatorOut(s, z, c, part, ci, 3, baseInc, o2)
-        out = operatorOut(s, z, c, part, ci, 4, baseInc, o3)
+        let o2 = operatorOut(&mut s, z, c, part, ci, 2, baseInc, o1)
+        let o3 = operatorOut(&mut s, z, c, part, ci, 3, baseInc, o2)
+        out = operatorOut(&mut s, z, c, part, ci, 4, baseInc, o3)
     } else if alg == 1 {
-        let o2 = operatorOut(s, z, c, part, ci, 2, baseInc, 0)
-        let o3 = operatorOut(s, z, c, part, ci, 3, baseInc, o1 + o2)
-        out = operatorOut(s, z, c, part, ci, 4, baseInc, o3)
+        let o2 = operatorOut(&mut s, z, c, part, ci, 2, baseInc, 0)
+        let o3 = operatorOut(&mut s, z, c, part, ci, 3, baseInc, o1 + o2)
+        out = operatorOut(&mut s, z, c, part, ci, 4, baseInc, o3)
     } else if alg == 2 {
-        let o2 = operatorOut(s, z, c, part, ci, 2, baseInc, 0)
-        let o3 = operatorOut(s, z, c, part, ci, 3, baseInc, o2)
-        out = operatorOut(s, z, c, part, ci, 4, baseInc, o1 + o3)
+        let o2 = operatorOut(&mut s, z, c, part, ci, 2, baseInc, 0)
+        let o3 = operatorOut(&mut s, z, c, part, ci, 3, baseInc, o2)
+        out = operatorOut(&mut s, z, c, part, ci, 4, baseInc, o1 + o3)
     } else if alg == 3 {
-        let o2 = operatorOut(s, z, c, part, ci, 2, baseInc, o1)
-        let o3 = operatorOut(s, z, c, part, ci, 3, baseInc, 0)
-        out = operatorOut(s, z, c, part, ci, 4, baseInc, o2 + o3)
+        let o2 = operatorOut(&mut s, z, c, part, ci, 2, baseInc, o1)
+        let o3 = operatorOut(&mut s, z, c, part, ci, 3, baseInc, 0)
+        out = operatorOut(&mut s, z, c, part, ci, 4, baseInc, o2 + o3)
     } else if alg == 4 {
-        let o2 = operatorOut(s, z, c, part, ci, 2, baseInc, o1)
-        let o3 = operatorOut(s, z, c, part, ci, 3, baseInc, 0)
-        let o4 = operatorOut(s, z, c, part, ci, 4, baseInc, o3)
+        let o2 = operatorOut(&mut s, z, c, part, ci, 2, baseInc, o1)
+        let o3 = operatorOut(&mut s, z, c, part, ci, 3, baseInc, 0)
+        let o4 = operatorOut(&mut s, z, c, part, ci, 4, baseInc, o3)
         out = o2 + o4
     } else if alg == 5 {
-        let o2 = operatorOut(s, z, c, part, ci, 2, baseInc, o1)
-        let o3 = operatorOut(s, z, c, part, ci, 3, baseInc, o1)
-        let o4 = operatorOut(s, z, c, part, ci, 4, baseInc, o1)
+        let o2 = operatorOut(&mut s, z, c, part, ci, 2, baseInc, o1)
+        let o3 = operatorOut(&mut s, z, c, part, ci, 3, baseInc, o1)
+        let o4 = operatorOut(&mut s, z, c, part, ci, 4, baseInc, o1)
         out = o2 + o3 + o4
     } else if alg == 6 {
-        let o2 = operatorOut(s, z, c, part, ci, 2, baseInc, o1)
-        let o3 = operatorOut(s, z, c, part, ci, 3, baseInc, 0)
-        let o4 = operatorOut(s, z, c, part, ci, 4, baseInc, 0)
+        let o2 = operatorOut(&mut s, z, c, part, ci, 2, baseInc, o1)
+        let o3 = operatorOut(&mut s, z, c, part, ci, 3, baseInc, 0)
+        let o4 = operatorOut(&mut s, z, c, part, ci, 4, baseInc, 0)
         out = o2 + o3 + o4
     } else {
-        let o2 = operatorOut(s, z, c, part, ci, 2, baseInc, 0)
-        let o3 = operatorOut(s, z, c, part, ci, 3, baseInc, 0)
-        let o4 = operatorOut(s, z, c, part, ci, 4, baseInc, 0)
+        let o2 = operatorOut(&mut s, z, c, part, ci, 2, baseInc, 0)
+        let o3 = operatorOut(&mut s, z, c, part, ci, 3, baseInc, 0)
+        let o4 = operatorOut(&mut s, z, c, part, ci, 4, baseInc, 0)
         out = o1 + o2 + o3 + o4
     }
     return out
@@ -233,7 +233,7 @@ pub fn synthSample(s: &mut Synth, z: &mut Z80): StereoSample {
             let fMilli = fmFreqMilli(z, c)
             if fMilli > 0 && s.envLevel[c] > 0 {
                 let baseInc = (fMilli * 65536) / (SAMPLE_RATE * 1000)
-                let chOut = fmChannel4op(s, z, c, part, ci, baseInc) * s.envLevel[c] / 255
+                let chOut = fmChannel4op(&mut s, z, c, part, ci, baseInc) * s.envLevel[c] / 255
                 let pan = panLR(z, part, ci)
                 if (pan & 2) != 0 {
                     accL = accL + chOut

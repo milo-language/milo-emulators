@@ -13,6 +13,7 @@
 // Ref: Motorola M68000PRM; https://github.com/TomHarte/ProcessorTests (680x0).
 
 from "./z80" import {
+    z80DevWrite,
     Z80, newZ80, stepZ80
 }
 

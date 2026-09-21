@@ -6,6 +6,7 @@ from "./cartridge" import {
     Cartridge
 }
 from "./ppu" import {
+    ppuStep,
     Ppu, newPpu, ppuRegRead, ppuRegWrite, mmc2InitMapper, mmc2SetChr
 }
 from "./apu" import {

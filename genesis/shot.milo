@@ -1,0 +1,179 @@
+// Headless renderer: run a Genesis ROM for N frames with no input, dump the frame as
+// raw RGB24 (320x224). With [count], dump `count` consecutive frames back to back in
+// one file, which ffmpeg reads as a video:
+//   ffmpeg -f rawvideo -pixel_format rgb24 -video_size 320x224 -framerate 60 -i out.rgb out.mp4
+//   milo build genesis/shot.milo -o /tmp/genshot --release
+//   /tmp/genshot <rom> <frames> <out.rgb> [count]
+// No synth: the YM2612 timers games poll live in the Z80 core, so skipping audio
+// synthesis does not change timing. H32 (256px) frames land in the left columns with the right edge black, like the
+// native 320-wide texture.
+from "std/args" import {
+    args
+}
+from "std/fs" import {
+    writeFile
+}
+from "./cart68k" import {
+    Cart
+}
+from "./cart68kFile" import {
+    loadCart
+}
+from "./m68k" import {
+    M68k, Mem, newCpu, newMem, step, deliverInterrupt, z80Running
+}
+from "./render" import {
+    renderIndexed, frameWidth, frameHeight, pixelR, pixelG, pixelB
+}
+from "./z80" import {
+    stepZ80, z80Interrupt
+}
+
+let MAXW: i64 = 320
+
+fn main(): i32 {
+    let argv = args()
+    if argv.len < 4 {
+        print("usage: shot <rom> <frames> <out.rgb> [count]")
+        return 1
+    }
+    match loadCart(argv[1]) {
+        Result.Ok(cart) => {
+            var count: i64 = 1
+            if argv.len > 4 {
+                count = strToInt(argv[4])
+            }
+            return run(cart, strToInt(argv[2]), argv[3], count)
+        }
+        Result.Err(e) => {
+            print("load failed: " + e)
+            return 1
+        }
+    }
+}
+
+fn strToInt(s: string): i64 {
+    var n: i64 = 0
+    for ch in s {
+        let c = ch as i64
+        if c >= 48 && c <= 57 {
+            n = n * 10 + (c - 48)
+        }
+    }
+    return n
+}
+
+// loadRom and runFrame are copies of genesisWebcore's (which genesis.milo also
+// carries): every module there defines main, and Milo's single namespace allows one.
+fn loadRom(m: &mut Mem, cart: &Cart): void {
+    var i: i64 = 0
+    while i < cart.rom.len && i < 0x400000 {
+        m.ram[i] = cart.rom[i]
+        m.z80.rom.push(cart.rom[i]) // Z80 bank-window ROM copy (DAC samples)
+        i = i + 1
+    }
+}
+
+fn runFrame(cpu: &mut M68k, m: &mut Mem): void {
+    var line: i64 = 0
+    var hIntCounter: i64 = m.vdpRegs[10]
+    while line < 262 {
+        m.vdpLine = line
+        // Horizontal interrupt (level 4): counts down per active line, fires when
+        // it expires (reg0 bit4), reloads from reg10; held reloaded in vblank.
+        if line < 224 {
+            if hIntCounter == 0 {
+                hIntCounter = m.vdpRegs[10]
+                if (m.vdpRegs[0] & 0x10) != 0 {
+                    deliverInterrupt(&mut cpu, &mut m, 4)
+                }
+            } else {
+                hIntCounter = hIntCounter - 1
+            }
+        } else {
+            hIntCounter = m.vdpRegs[10]
+        }
+        var k: i64 = 0
+        while k < 130 {
+            if !cpu.halted {
+                step(&mut cpu, &mut m)
+            }
+            if z80Running(m) && (k & 1) == 0 {
+                stepZ80(&mut m.z80)
+            }
+            k = k + 1
+        }
+        if line == 224 {
+            if (m.vdpRegs[1] & 0x20) != 0 {
+                deliverInterrupt(&mut cpu, &mut m, 6)
+            }
+            if z80Running(m) {
+                z80Interrupt(&mut m.z80)
+            }
+        }
+        line = line + 1
+    }
+}
+
+fn appendFrame(m: &Mem, data: &mut string): void {
+    let fb = renderIndexed(m)
+    let srcW = frameWidth(m)
+    let h = frameHeight(m)
+    var row: i64 = 0
+    while row < h {
+        var col: i64 = 0
+        while col < MAXW {
+            if col < srcW {
+                let px = fb[row * srcW + col]
+                data.push(pixelR(m, px) as u8)
+                data.push(pixelG(m, px) as u8)
+                data.push(pixelB(m, px) as u8)
+            } else {
+                data.push(0)
+                data.push(0)
+                data.push(0)
+            }
+            col = col + 1
+        }
+        row = row + 1
+    }
+}
+
+fn run(cart: Cart, frames: i64, out: string, count: i64): i32 {
+    var m = newMem()
+    m.genesis = true
+    m.z80.gen = true
+    loadRom(&mut m, cart)
+    // Reset vector: SP at $000000, PC at $000004 (big-endian longs).
+    let sp = ((m.ram[0] as i64) << 24) | ((m.ram[1] as i64) << 16) | ((m.ram[2] as i64) << 8) | (m.ram[3] as i64)
+    let pc = ((m.ram[4] as i64) << 24) | ((m.ram[5] as i64) << 16) | ((m.ram[6] as i64) << 8) | (m.ram[7] as i64)
+    var cpu = newCpu()
+    cpu.a[7] = sp & 0xFFFFFFFF
+    cpu.pc = pc & 0xFFFFFFFF
+    cpu.sr = 0x2700
+
+    var f: i64 = 0
+    while f < frames {
+        runFrame(&mut cpu, &mut m)
+        f = f + 1
+    }
+    var data: string = ""
+    appendFrame(m, &mut data)
+    var done: i64 = 1
+    while done < count {
+        runFrame(&mut cpu, &mut m)
+        appendFrame(m, &mut data)
+        done = done + 1
+    }
+    match writeFile(out, data) {
+        Result.Ok(n) => {
+            print("wrote bytes: ")
+            print(n)
+            return 0
+        }
+        Result.Err(e) => {
+            print("write failed")
+            return 1
+        }
+    }
+}

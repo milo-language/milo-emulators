@@ -1,4 +1,6 @@
 // Headless renderer: run a ROM for N frames, dump the framebuffer as raw RGB24.
+// With [count], dump `count` consecutive frames after the first N, back to back in one
+// file, which ffmpeg reads as a video: -f rawvideo ... -framerate 60 -i out.rgb out.mp4
 // Convert to PNG:  ffmpeg -f rawvideo -pixel_format rgb24 -video_size 256x240 -i out.rgb -y out.png
 //   milo build examples/emulators/nes/shot.milo -o /tmp/shot --debug
 //   /tmp/shot <rom> <frames> <out.rgb>
@@ -24,12 +26,16 @@ from "./ppu" import {
 fn main(): i32 {
     let argv = args()
     if argv.len < 4 {
-        print("usage: shot <rom> <frames> <out.rgb>")
+        print("usage: shot <rom> <frames> <out.rgb> [count]")
         return 1
     }
     match loadCartridge(argv[1]) {
         Result.Ok(cart) => {
-            return run(cart, strToInt(argv[2]), argv[3])
+            var count: i64 = 1
+            if argv.len > 4 {
+                count = strToInt(argv[4])
+            }
+            return run(cart, strToInt(argv[2]), argv[3], count)
         }
         Result.Err(e) => {
             print("load failed: ")
@@ -37,7 +43,6 @@ fn main(): i32 {
             return 1
         }
     }
-    return 0
 }
 
 fn strToInt(s: string): i64 {
@@ -51,28 +56,24 @@ fn strToInt(s: string): i64 {
     return n
 }
 
-fn run(cart: Cartridge, frames: i64, out: string): i32 {
-    var bus = newBus(cart)
-    var cpu = newCpuReset(&mut bus)
-    var f: i64 = 0
-    while f < frames {
-        let startFrame = bus.ppu.frame
-        while bus.ppu.frame == startFrame {
-            let before = cpu.cyc
-            step(&mut cpu, &mut bus)
-            let used = cpu.cyc - before
-            var k: i64 = 0
-            while k < used * 3 {
-                clockPpu(&mut bus)
-                k = k + 1
-            }
-            clockApu(&mut bus, used)
-            serviceInterrupts(&mut cpu, &mut bus)
+fn runFrame(cpu: &mut Cpu, bus: &mut Bus): void {
+    let startFrame = bus.ppu.frame
+    while bus.ppu.frame == startFrame {
+        let before = cpu.cyc
+        step(&mut cpu, &mut bus)
+        let used = cpu.cyc - before
+        var k: i64 = 0
+        while k < used * 3 {
+            clockPpu(&mut bus)
+            k = k + 1
         }
-        f = f + 1
+        clockApu(&mut bus, used)
+        serviceInterrupts(&mut cpu, &mut bus)
     }
+}
+
+fn appendFrame(bus: &mut Bus, data: &mut string): void {
     renderFrame(&mut bus.ppu)
-    var data: string = ""
     var i: i64 = 0
     while i < 61440 {
         let px = bus.ppu.fb[i] as i64
@@ -80,6 +81,24 @@ fn run(cart: Cartridge, frames: i64, out: string): i32 {
         data.push(((px >> 8) & 0xFF) as u8)
         data.push(((px >> 16) & 0xFF) as u8)
         i = i + 1
+    }
+}
+
+fn run(cart: Cartridge, frames: i64, out: string, count: i64): i32 {
+    var bus = newBus(cart)
+    var cpu = newCpuReset(&mut bus)
+    var f: i64 = 0
+    while f < frames {
+        runFrame(&mut cpu, &mut bus)
+        f = f + 1
+    }
+    var data: string = ""
+    appendFrame(&mut bus, &mut data)
+    var done: i64 = 1
+    while done < count {
+        runFrame(&mut cpu, &mut bus)
+        appendFrame(&mut bus, &mut data)
+        done = done + 1
     }
     match writeFile(out, data) {
         Result.Ok(n) => {

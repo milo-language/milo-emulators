@@ -160,7 +160,7 @@ fn runFrame(cpu: &mut M68k, m: &mut Mem) {
 }
 
 // Generate one frame of audio and queue it to SDL (735 samples @ 44.1 kHz).
-fn queueAudio(synth: &mut Synth, m: &Mem, dev: u32) {
+fn queueAudio(synth: &mut Synth, m: &mut Mem, dev: u32) {
     var buf: Vec<u8> = Vec.new()
     var sa: i64 = 0
     while sa < 735 {
@@ -451,7 +451,7 @@ fn main(): i32 {
             } else {
                 runFrame(&mut cpu, &mut m)
                 if audioDev != 0 {
-                    queueAudio(&mut synth, m, audioDev)
+                    queueAudio(&mut synth, &mut m, audioDev)
                 }
                 let fb = renderIndexed(m)
                 let w = frameWidth(m)

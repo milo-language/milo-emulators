@@ -58,7 +58,7 @@ fn loadRegs(spc: &mut Spc, m: &mut SpcMem, t: &mut Toks): void {
     }
 }
 
-fn checkFinal(spc: &Spc, m: &SpcMem, t: &mut Toks): string {
+fn checkFinal(spc: &Spc, m: &mut SpcMem, t: &mut Toks): string {
     let fa = nextTok(&mut t)
     let fx = nextTok(&mut t)
     let fy = nextTok(&mut t)
@@ -138,7 +138,7 @@ fn main(): i32 {
         spcMemReset(&mut m)
         loadRegs(&mut spc, &mut m, &mut t)
         spcStep(&mut spc, &mut m)
-        let mismatch = checkFinal(spc, m, &mut t)
+        let mismatch = checkFinal(spc, &mut m, &mut t)
         if mismatch == "" {
             passed = passed + 1
         } else {

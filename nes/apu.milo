@@ -166,7 +166,7 @@ pub fn newApu(): Apu {
         tt[i] = 163.67 / (24329.0 / (i as f64) + 100.0)
         i = i + 1
     }
-    var samples: Vec<i16> = []
+    let samples: Vec<i16> = []
     return Apu {
         pulse1: newPulse(false), pulse2: newPulse(true), triangle: newTriangle(), noise: newNoise(),
         dmc: newDmc(),

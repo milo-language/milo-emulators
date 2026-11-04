@@ -91,7 +91,7 @@ fn main(): i32 {
             } else {
                 DOWN
             }
-            var steps = if selN < 0 {
+            let steps = if selN < 0 {
                 -selN
             } else {
                 selN

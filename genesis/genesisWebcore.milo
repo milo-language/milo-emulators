@@ -75,7 +75,7 @@ fn createGenesis(rom: Vec<u8>): GenHandle {
         rgba.push(0)
         t = t + 1
     }
-    var samples: Vec<i16> = Vec.new()
+    let samples: Vec<i16> = Vec.new()
 
     return GenHandle {
         cpu: cpu, m: m, synth: newSynth(), rgba: rgba, samples: samples,

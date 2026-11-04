@@ -1136,7 +1136,7 @@ fn push8(cpu: &mut Cpu, m: &mut Mem, v: i64): void {
     spDec(&mut cpu)
 }
 
-fn pull8(cpu: &mut Cpu, m: &mut Mem): i64 {
+fn pull8(cpu: &mut Cpu, m: &Mem): i64 {
     spInc(&mut cpu)
     return memRead(m, cpu.s)
 }
@@ -1147,9 +1147,9 @@ fn push16(cpu: &mut Cpu, m: &mut Mem, v: i64): void {
     push8(&mut cpu, &mut m, v & 0xFF)
 }
 
-fn pull16(cpu: &mut Cpu, m: &mut Mem): i64 {
-    let lo = pull8(&mut cpu, &mut m)
-    let hi = pull8(&mut cpu, &mut m)
+fn pull16(cpu: &mut Cpu, m: &Mem): i64 {
+    let lo = pull8(&mut cpu, m)
+    let hi = pull8(&mut cpu, m)
     return lo | (hi << 8)
 }
 
@@ -1167,7 +1167,7 @@ fn push8f(cpu: &mut Cpu, m: &mut Mem, v: i64): void {
     cpu.s = (cpu.s - 1) & 0xFFFF
 }
 
-fn pull8f(cpu: &mut Cpu, m: &mut Mem): i64 {
+fn pull8f(cpu: &mut Cpu, m: &Mem): i64 {
     cpu.s = (cpu.s + 1) & 0xFFFF
     return memRead(m, cpu.s)
 }
@@ -1177,9 +1177,9 @@ fn push16f(cpu: &mut Cpu, m: &mut Mem, v: i64): void {
     push8f(&mut cpu, &mut m, v & 0xFF)
 }
 
-fn pull16f(cpu: &mut Cpu, m: &mut Mem): i64 {
-    let lo = pull8f(&mut cpu, &mut m)
-    let hi = pull8f(&mut cpu, &mut m)
+fn pull16f(cpu: &mut Cpu, m: &Mem): i64 {
+    let lo = pull8f(&mut cpu, m)
+    let hi = pull8f(&mut cpu, m)
     return lo | (hi << 8)
 }
 
@@ -2937,7 +2937,7 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
             cpu.pc = target
         }
         0x60 => { // RTS
-            let addr = pull16(&mut cpu, &mut m)
+            let addr = pull16(&mut cpu, m)
             cpu.pc = (addr + 1) & 0xFFFF
         }
         0x22 => { // JSL long — push PBR then PC-1 (full 16-bit stack)
@@ -2949,8 +2949,8 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
             cpu.pbr = (target >> 16) & 0xFF
         }
         0x6B => { // RTL — pull PC then PBR (full stack)
-            let addr = pull16f(&mut cpu, &mut m)
-            let bank = pull8f(&mut cpu, &mut m)
+            let addr = pull16f(&mut cpu, m)
+            let bank = pull8f(&mut cpu, m)
             clampEmuStack(&mut cpu)
             cpu.pc = (addr + 1) & 0xFFFF
             cpu.pbr = bank & 0xFF
@@ -2984,11 +2984,11 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
         }
         0x68 => { // PLA
             if m8(cpu) {
-                let v = pull8(&mut cpu, &mut m)
+                let v = pull8(&mut cpu, m)
                 cpu.a = (cpu.a & 0xFF00) | v
                 setNZ8(&mut cpu, v)
             } else {
-                cpu.a = pull16(&mut cpu, &mut m)
+                cpu.a = pull16(&mut cpu, m)
                 setNZ16(&mut cpu, cpu.a)
             }
         }
@@ -3001,10 +3001,10 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
         }
         0xFA => { // PLX
             if x8(cpu) {
-                cpu.x = pull8(&mut cpu, &mut m)
+                cpu.x = pull8(&mut cpu, m)
                 setNZ8(&mut cpu, cpu.x)
             } else {
-                cpu.x = pull16(&mut cpu, &mut m)
+                cpu.x = pull16(&mut cpu, m)
                 setNZ16(&mut cpu, cpu.x)
             }
         }
@@ -3017,10 +3017,10 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
         }
         0x7A => { // PLY
             if x8(cpu) {
-                cpu.y = pull8(&mut cpu, &mut m)
+                cpu.y = pull8(&mut cpu, m)
                 setNZ8(&mut cpu, cpu.y)
             } else {
-                cpu.y = pull16(&mut cpu, &mut m)
+                cpu.y = pull16(&mut cpu, m)
                 setNZ16(&mut cpu, cpu.y)
             }
         }
@@ -3028,7 +3028,7 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
             push8(&mut cpu, &mut m, cpu.p)
         }
         0x28 => { // PLP
-            cpu.p = pull8(&mut cpu, &mut m)
+            cpu.p = pull8(&mut cpu, m)
             applyEmulationConstraints(&mut cpu) // e forces M/X set + truncates
             if (cpu.p & FX) != 0 { // native X=1 narrows index registers
                 cpu.x = cpu.x & 0xFF
@@ -3040,7 +3040,7 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
             clampEmuStack(&mut cpu)
         }
         0xAB => { // PLB
-            cpu.dbr = pull8f(&mut cpu, &mut m)
+            cpu.dbr = pull8f(&mut cpu, m)
             clampEmuStack(&mut cpu)
             setNZ8(&mut cpu, cpu.dbr)
         }
@@ -3053,7 +3053,7 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
             clampEmuStack(&mut cpu)
         }
         0x2B => { // PLD
-            cpu.d = pull16f(&mut cpu, &mut m)
+            cpu.d = pull16f(&mut cpu, m)
             clampEmuStack(&mut cpu)
             setNZ16(&mut cpu, cpu.d)
         }
@@ -3071,10 +3071,10 @@ pub fn step(cpu: &mut Cpu, m: &mut Mem): void {
             softInterrupt(&mut cpu, &mut m, 0xFFE4, 0xFFF4)
         } // COP
         0x40 => { // RTI
-            cpu.p = pull8(&mut cpu, &mut m)
-            let addr = pull16(&mut cpu, &mut m)
+            cpu.p = pull8(&mut cpu, m)
+            let addr = pull16(&mut cpu, m)
             if cpu.e == 0 {
-                cpu.pbr = pull8(&mut cpu, &mut m)
+                cpu.pbr = pull8(&mut cpu, m)
             }
             cpu.pc = addr
             applyEmulationConstraints(&mut cpu)

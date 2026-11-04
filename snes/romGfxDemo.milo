@@ -15,9 +15,9 @@ from "./ppu" import {
 
 // Emit "LDA #imm ; STA $addr" (5 bytes); return the next offset.
 fn ldaSta(rom: &mut Vec<u8>, o: i64, imm: i64, addr: i64): i64 {
-    rom[o] = 0xA9 as u8
+    rom[o] = 0xA9
     rom[o + 1] = (imm & 0xFF) as u8
-    rom[o + 2] = 0x8D as u8
+    rom[o + 2] = 0x8D
     rom[o + 3] = (addr & 0xFF) as u8
     rom[o + 4] = ((addr >> 8) & 0xFF) as u8
     return o + 5
@@ -53,9 +53,9 @@ fn main(): i32 {
     o = ldaSta(&mut rom, o, 0x04, 0x2107) // BG1SC -> tilemap word $0400
     o = ldaSta(&mut rom, o, 0x00, 0x210B) // BG12NBA -> char base 0
     o = ldaSta(&mut rom, o, 0x0F, 0x2100) // INIDISP brightness 15
-    rom[o] = 0xEA as u8 // NOP (loop)
-    rom[o + 1] = 0x80 as u8
-    rom[o + 2] = 0xFD as u8 // BRA -3
+    rom[o] = 0xEA // NOP (loop)
+    rom[o + 1] = 0x80
+    rom[o + 2] = 0xFD // BRA -3
 
     // Palette at $8200: color0 black; 1 red, 2 green, 3 blue, 4 yellow (BGR555).
     let pal = [0x00, 0x00, 0x1F, 0x00, 0xE0, 0x03, 0x00, 0x7C, 0xFF, 0x03]
@@ -89,12 +89,12 @@ fn main(): i32 {
             0x00
         }
         ) as u8
-        rom[0x300 + 16 + row * 2 + 1] = 0x00 as u8
+        rom[0x300 + 16 + row * 2 + 1] = 0x00
         row = row + 1
     }
 
-    rom[0x7FFC] = 0x00 as u8
-    rom[0x7FFD] = 0x80 as u8 // reset -> $8000
+    rom[0x7FFC] = 0x00
+    rom[0x7FFD] = 0x80 // reset -> $8000
 
     var m = busNew(rom, 0)
     var cpu = newCpuReset(m)

@@ -21,9 +21,9 @@ fn putW(s: &mut string, v: i64): void {
 
 fn putBool(s: &mut string, b: bool): void {
     if b {
-        s.push(1 as u8)
+        s.push(1)
     } else {
-        s.push(0 as u8)
+        s.push(0)
     }
 }
 

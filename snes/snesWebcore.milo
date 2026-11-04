@@ -47,8 +47,8 @@ fn createSnes(rom: Vec<u8>): SnesHandle {
         }
     }
 
-    var m = busNew(data, mapMode)
-    var cpu = newCpuReset(m)
+    let m = busNew(data, mapMode)
+    let cpu = newCpuReset(m)
 
     var fb: Vec<i64> = Vec.new()
     var rgba: Vec<u8> = Vec.new()
@@ -69,7 +69,7 @@ fn createSnes(rom: Vec<u8>): SnesHandle {
         k = k + 1
     }
 
-    var samples: Vec<i16> = Vec.new()
+    let samples: Vec<i16> = Vec.new()
 
     return SnesHandle {
         cpu: cpu, m: m, fb: fb, rgba: rgba, apuBuf: apuBuf, samples: samples,

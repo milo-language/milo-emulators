@@ -65,9 +65,9 @@ pub fn newBus(cart: Cartridge): Bus {
     let n = cart.prg.len
     // 16K carts mirror $C000-$FFFF onto $8000-$BFFF via a 0x3FFF mask.
     let mask: i64 = if n == 16384 {
-        0x3FFF as i64
+        0x3FFF
     } else {
-        0x7FFF as i64
+        0x7FFF
     }
     // Move CHR + mirroring into the PPU; PRG into the bus. (cart consumed.)
     let ppu = newPpu(cart.chr, cart.mirrorVertical)
@@ -684,9 +684,9 @@ fn aIndY(cpu: &mut Cpu, bus: &mut Bus): u16 {
 fn adc(cpu: &mut Cpu, m: u8): void {
     let a: i64 = cpu.a as i64
     let carry: i64 = if cpuFlag(cpu, FC) {
-        1 as i64
+        1
     } else {
-        0 as i64
+        0
     }
     let sum: i64 = a + (m as i64) + carry
     let r: u8 = (sum & 0xFF) as u8
@@ -841,7 +841,7 @@ fn lax(cpu: &mut Cpu, bus: &mut Bus, addr: u16): void {
     setZN(&mut cpu, v)
 }
 
-fn sax(cpu: &mut Cpu, bus: &mut Bus, addr: u16): void {
+fn sax(cpu: &Cpu, bus: &mut Bus, addr: u16): void {
     busWrite(&mut bus, addr, cpu.a & cpu.x)
 }
 
@@ -948,15 +948,15 @@ fn hiPlus1(addr: u16): i64 {
     return (((addr as i64) >> 8) + 1) & 0xFF
 }
 
-fn sha(cpu: &mut Cpu, bus: &mut Bus, addr: u16): void {
+fn sha(cpu: &Cpu, bus: &mut Bus, addr: u16): void {
     busWrite(&mut bus, addr, (((cpu.a as i64) & (cpu.x as i64) & hiPlus1(addr)) & 0xFF) as u8)
 }
 
-fn shx(cpu: &mut Cpu, bus: &mut Bus, addr: u16): void {
+fn shx(cpu: &Cpu, bus: &mut Bus, addr: u16): void {
     busWrite(&mut bus, addr, (((cpu.x as i64) & hiPlus1(addr)) & 0xFF) as u8)
 }
 
-fn shy(cpu: &mut Cpu, bus: &mut Bus, addr: u16): void {
+fn shy(cpu: &Cpu, bus: &mut Bus, addr: u16): void {
     busWrite(&mut bus, addr, (((cpu.y as i64) & hiPlus1(addr)) & 0xFF) as u8)
 }
 
@@ -1939,19 +1939,19 @@ pub fn step(cpu: &mut Cpu, bus: &mut Bus): void {
         }
         // ---- SAX (store A & X) ----
         0x87 => {
-            sax(&mut cpu, &mut bus, aZp(&mut cpu, &mut bus))
+            sax(cpu, &mut bus, aZp(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 3
         }
         0x97 => {
-            sax(&mut cpu, &mut bus, aZpY(&mut cpu, &mut bus))
+            sax(cpu, &mut bus, aZpY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 4
         }
         0x8F => {
-            sax(&mut cpu, &mut bus, aAbs(&mut cpu, &mut bus))
+            sax(cpu, &mut bus, aAbs(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 4
         }
         0x83 => {
-            sax(&mut cpu, &mut bus, aIndX(&mut cpu, &mut bus))
+            sax(cpu, &mut bus, aIndX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 6
         }
         // ---- unofficial SBC (== official SBC imm) ----
@@ -2169,19 +2169,19 @@ pub fn step(cpu: &mut Cpu, bus: &mut Bus): void {
             cpu.cyc = cpu.cyc + 4 + cpu.extraCycles
         }
         0x9F => { // SHA abs,Y
-            sha(&mut cpu, &mut bus, aAbsY(&mut cpu, &mut bus))
+            sha(cpu, &mut bus, aAbsY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 5
         }
         0x93 => { // SHA (ind),Y
-            sha(&mut cpu, &mut bus, aIndY(&mut cpu, &mut bus))
+            sha(cpu, &mut bus, aIndY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 6
         }
         0x9E => { // SHX abs,Y
-            shx(&mut cpu, &mut bus, aAbsY(&mut cpu, &mut bus))
+            shx(cpu, &mut bus, aAbsY(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 5
         }
         0x9C => { // SHY abs,X
-            shy(&mut cpu, &mut bus, aAbsX(&mut cpu, &mut bus))
+            shy(cpu, &mut bus, aAbsX(&mut cpu, &mut bus))
             cpu.cyc = cpu.cyc + 5
         }
         0x9B => { // TAS / SHS

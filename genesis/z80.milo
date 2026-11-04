@@ -305,7 +305,7 @@ fn setSZYX(cpu: &mut Z80, r: i64) {
 }
 
 // --- register-index access (Z80 encoding 0..7 = B,C,D,E,H,L,(HL),A) ---
-fn getReg(cpu: &mut Z80, idx: i64): i64 {
+fn getReg(cpu: &Z80, idx: i64): i64 {
     if idx == 0 {
         return cpu.b
     }
@@ -438,7 +438,7 @@ fn doAlu(cpu: &mut Z80, op: i64, val: i64) {
 }
 
 fn incReg(cpu: &mut Z80, idx: i64) {
-    let v = getReg(&mut cpu, idx)
+    let v = getReg(cpu, idx)
     let res = (v + 1) & 0xFF
     setSZYX(&mut cpu, res)
     setFlag(&mut cpu, FH, (v & 0xF) == 0xF)
@@ -448,7 +448,7 @@ fn incReg(cpu: &mut Z80, idx: i64) {
 }
 
 fn decReg(cpu: &mut Z80, idx: i64) {
-    let v = getReg(&mut cpu, idx)
+    let v = getReg(cpu, idx)
     let res = (v - 1) & 0xFF
     setSZYX(&mut cpu, res)
     setFlag(&mut cpu, FH, (v & 0xF) == 0)
@@ -702,11 +702,11 @@ pub fn stepZ80(cpu: &mut Z80): bool {
         return execIndex(&mut cpu, true)
     }
     if x == 1 {
-        setReg(&mut cpu, y, getReg(&mut cpu, z)) // LD r, r'
+        setReg(&mut cpu, y, getReg(cpu, z)) // LD r, r'
         return true
     }
     if x == 2 {
-        doAlu(&mut cpu, y, getReg(&mut cpu, z)) // ALU A, r
+        doAlu(&mut cpu, y, getReg(cpu, z)) // ALU A, r
         return true
     }
     if x == 0 {
@@ -1078,7 +1078,7 @@ fn execIndex(cpu: &mut Z80, isIY: bool): bool {
         if z == 6 {
             setReg(&mut cpu, y, rd(cpu, a)) // LD y, (IX+d)  — y is a real register
         } else {
-            wr(&mut cpu, a, getReg(&mut cpu, z)) // LD (IX+d), z
+            wr(&mut cpu, a, getReg(cpu, z)) // LD (IX+d), z
         }
         return true
     }
@@ -1145,14 +1145,14 @@ fn execCB(cpu: &mut Z80): bool {
     let z = op & 0x7
 
     if x == 0 {
-        let v = getReg(&mut cpu, z)
+        let v = getReg(cpu, z)
         let res = shiftOp(&mut cpu, y, v)
         setReg(&mut cpu, z, res)
         return true
     }
     if x == 1 {
         // BIT y, r
-        let v = getReg(&mut cpu, z)
+        let v = getReg(cpu, z)
         let bitset = ((v >> y) & 1) != 0
         setFlag(&mut cpu, FZ,!bitset)
         setFlag(&mut cpu, FPV,!bitset)
@@ -1170,10 +1170,10 @@ fn execCB(cpu: &mut Z80): bool {
         return true
     }
     if x == 2 {
-        setReg(&mut cpu, z, getReg(&mut cpu, z) & ~(1 << y)) // RES
+        setReg(&mut cpu, z, getReg(cpu, z) & ~(1 << y)) // RES
         return true
     }
-    setReg(&mut cpu, z, getReg(&mut cpu, z) | (1 << y)) // SET
+    setReg(&mut cpu, z, getReg(cpu, z) | (1 << y)) // SET
     return true
 }
 

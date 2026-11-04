@@ -217,13 +217,13 @@ fn runNes(cart: Cartridge): i32 {
         want[6] = 1 // channels
         want[8] = 0x00
         want[9] = 0x04 // samples 1024 (0x0400) LE
-        var got: [u8; 32] = [0; 32]
+        let got: [u8; 32] = [0; 32]
         let audioDev = SDL_OpenAudioDevice(0 as *u8, 0, want, got, 0)
         if audioDev != 0 {
             SDL_PauseAudioDevice(audioDev, 0) // unpause: start pulling from the queue
         }
 
-        var ev: [u8; 64] = [0; 64]
+        let ev: [u8; 64] = [0; 64]
         var quit = false
         var focused = true // false while backgrounded -> pause + silence audio
         var dumpPrev = false // edge-detect the P (frame-dump) key

@@ -25,12 +25,12 @@ fn fallbackCart(): Cartridge {
     var i: i64 = 0
     while i < 16384 {
         if i == 0x3FFC {
-            prg.push(0x00 as u8)
+            prg.push(0x00)
         } else {
             if i == 0x3FFD {
-                prg.push(0x80 as u8)
+                prg.push(0x80)
             } else {
-                prg.push(0xEA as u8)
+                prg.push(0xEA)
             }
         }
         i = i + 1
@@ -38,7 +38,7 @@ fn fallbackCart(): Cartridge {
     var chr: Vec<u8> = []
     i = 0
     while i < 8192 {
-        chr.push(0 as u8)
+        chr.push(0)
         i = i + 1
     }
     return Cartridge {
@@ -60,7 +60,7 @@ pub fn createNes(rom: Vec<u8>): NesHandle {
         }
     }
     var bus = newBus(cart)
-    var cpu = newCpuReset(&mut bus)
+    let cpu = newCpuReset(&mut bus)
     return NesHandle {
         cpu: cpu, bus: bus,
     }

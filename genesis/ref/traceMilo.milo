@@ -25,7 +25,7 @@ fn main(): i32 {
         print("usage: traceMilo <rom> <steps>")
         return 1
     }
-    var maxSteps: i64 = strToI(argv[2])
+    let maxSteps: i64 = strToI(argv[2])
 
     var cart = Cart {
         rom: Vec.new(), name: "", romEnd: 0

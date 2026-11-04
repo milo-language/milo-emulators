@@ -279,7 +279,7 @@ fn main(): i32 {
         want[6] = 2 // channels (stereo)
         want[8] = 0x00
         want[9] = 0x08 // 2048 samples
-        var got: [u8; 32] = [0; 32]
+        let got: [u8; 32] = [0; 32]
         let audioDev = SDL_OpenAudioDevice(0 as *u8, 0, want, got, 0)
         if audioDev != 0 {
             SDL_PauseAudioDevice(audioDev, 0)
@@ -293,7 +293,7 @@ fn main(): i32 {
             return 2
         }
 
-        var ev: [u8; 64] = [0; 64]
+        let ev: [u8; 64] = [0; 64]
         var quit = false
         var focused = true // false while backgrounded -> pause + silence audio
         var comboFrames: i64 = 0 // Start+Back held -> quit to the menu

@@ -194,7 +194,7 @@ fn snesRomTitle(rom: &Vec<u8>, mapMode: i64): string {
         if c >= 0x20 && c <= 0x7E {
             s.push(c as u8)
         } else {
-            s.push(0x20 as u8)
+            s.push(0x20)
         }
         i = i + 1
     }
@@ -286,7 +286,7 @@ fn main(): i32 {
         want[6] = 2 // stereo
         want[8] = 0x00
         want[9] = 0x04 // 1024 samples
-        var got: [u8; 32] = [0; 32]
+        let got: [u8; 32] = [0; 32]
         let audioDev = SDL_OpenAudioDevice(0 as *u8, 0, want, got, 0)
         if audioDev != 0 {
             SDL_PauseAudioDevice(audioDev, 0)
@@ -297,7 +297,7 @@ fn main(): i32 {
         if gameName.len > 0 {
             title = gameName + " - Milo SNES"
         }
-        title.push(0 as u8)
+        title.push(0)
         let win = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 256 * 3, 224 * 3, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE)
         let ren = SDL_CreateRenderer(win, -1, 0)
         // Scale the 256x224 frame to fill the (resizable) window, aspect-preserved.
@@ -317,7 +317,7 @@ fn main(): i32 {
             i = i + 1
         }
 
-        var ev: [u8; 64] = [0; 64]
+        let ev: [u8; 64] = [0; 64]
         var quit = false
         var focused = true // false while backgrounded -> pause the emulator
         var prevSave = false // F5 = save-state, F7 = load-state (edge-detected)

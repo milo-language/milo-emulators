@@ -26,7 +26,7 @@ fn joinPath(dir: &string, name: &string): string {
         full.push(dir[k])
         k = k + 1
     }
-    full.push(47 as u8) // '/'
+    full.push(47) // '/'
     k = 0
     while k < name.len {
         full.push(name[k])
@@ -110,7 +110,7 @@ fn snesTitleStr(data: &string, off: i64): string {
         if c >= 0x20 && c <= 0x7E {
             s.push(c as u8)
         } else {
-            s.push(0x20 as u8) // replace stray control bytes with a space
+            s.push(0x20) // replace stray control bytes with a space
         }
         i = i + 1
     }
@@ -153,7 +153,7 @@ fn genesisTitleStr(data: &string, off: i64): string {
             }
         } else {
             if pendingSpace {
-                s.push(0x20 as u8)
+                s.push(0x20)
                 pendingSpace = false
             }
             s.push(c as u8)

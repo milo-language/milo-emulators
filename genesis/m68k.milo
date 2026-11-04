@@ -660,7 +660,7 @@ fn incrStep(reg: i64, size: i64): i64 {
 fn briefIndex(cpu: &M68k, ext: i64): i64 {
     let ri = (ext >> 12) & 0x7
     let isAddr = (ext & 0x8000) != 0
-    var idx = if isAddr {
+    let idx = if isAddr {
         cpu.a[ri]
     } else {
         cpu.d[ri]

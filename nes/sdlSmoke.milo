@@ -62,7 +62,7 @@ fn main(): i32 {
 
         // RGBA8888 framebuffer, one u32 per pixel (0xAABBGGRR in little-endian memory).
         var fb: [u32; 61440] = [0; 61440] // 256 * 240
-        var ev: [u8; 64] = [0; 64] // SDL_Event is 56 bytes; over-allocate
+        let ev: [u8; 64] = [0; 64] // SDL_Event is 56 bytes; over-allocate
 
         var quit = false
         var frame: u32 = 0

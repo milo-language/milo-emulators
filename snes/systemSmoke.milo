@@ -30,8 +30,8 @@ fn main(): i32 {
         rom[i] = prog[i] as u8
         i = i + 1
     }
-    rom[0x7FFC] = 0x00 as u8 // reset vector low
-    rom[0x7FFD] = 0x80 as u8 // reset vector high -> $8000
+    rom[0x7FFC] = 0x00 // reset vector low
+    rom[0x7FFD] = 0x80 // reset vector high -> $8000
 
     var m = busNew(rom, 0)
     var cpu = newCpuReset(m)

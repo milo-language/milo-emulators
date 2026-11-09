@@ -172,8 +172,10 @@ fn checkFinal(cpu: &M68k, m: &Mem, t: &mut Toks): string {
 }
 
 fn resetTouched(m: &mut Mem) {
-    for t in m.touched {
-        m.ram[t] = 0
+    var i = 0
+    while i < m.touched.len {
+        m.ram[m.touched[i]] = 0
+        i = i + 1
     }
     m.touched = Vec.new()
 }

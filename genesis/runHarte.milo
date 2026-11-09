@@ -172,10 +172,9 @@ fn checkFinal(cpu: &M68k, m: &Mem, t: &mut Toks): string {
 }
 
 fn resetTouched(m: &mut Mem) {
-    var i = 0
-    while i < m.touched.len {
+    // Index loop: 'for t in m.touched' borrows all of 'm', blocking the m.ram write.
+    for i in 0..m.touched.len {
         m.ram[m.touched[i]] = 0
-        i = i + 1
     }
     m.touched = Vec.new()
 }
